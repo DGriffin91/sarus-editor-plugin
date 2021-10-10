@@ -141,7 +141,7 @@ pub fn init_compiler_editor_thread(
                             setup_fonts(ctx);
                             let mut style: egui::Style = (*ctx.style()).clone();
                             style.spacing.interact_size = egui::vec2(40.0, 40.0);
-                            style.spacing.slider_width = 300.0;
+                            style.spacing.slider_width = 250.0;
                             ctx.set_style(style);
                         },
                         // Called before each frame. Here you should update the state of your
@@ -263,8 +263,8 @@ fn Coefficients::highshelf(cutoff_hz, gain_db, q_value) -> (coeffs: Coefficients
 }
 
 struct AudioData { left: &[f64], right: &[f64], len: i64, }
-fn get_editor_state_size() -> (size: i64) { size = EditorState::size() }
-fn get_process_state_size() -> (size: i64) { size = ProcessState::size() }
+fn get_editor_state_size() -> (size: i64) { size = EditorState::size }
+fn get_process_state_size() -> (size: i64) { size = ProcessState::size }
 struct Ui { ui: &, }
 struct Debugger {}
 struct SarusModelParams { p1: f64, p2: f64, p3: f64, p4: f64, p5: f64, p6: f64, p7: f64, p8: f64, }

@@ -1,17 +1,16 @@
 use std::ffi::CStr;
 
+use crate::units::ConsumerRingBuf;
 use egui::Ui;
-use ringbuf::Consumer;
-use ringbuf::Producer;
 use sarus::decl;
 use sarus::frontend::Arg;
 use sarus::frontend::Declaration;
 use sarus::frontend::Function;
 
 use sarus::jit::JITBuilder;
-use sarus::validator::ExprType as E;
 
-use crate::units::ConsumerDump;
+use sarus::validator::struct_t;
+use sarus::validator::{address_t, bool_t, f64_t, i64_t};
 
 extern "C" fn label(ui: &mut Ui, s: *const i8) {
     let s = unsafe { CStr::from_ptr(s).to_str().unwrap() };
@@ -78,11 +77,11 @@ extern "C" fn slider_normalized(
 }
 
 pub struct DebuggerInput {
-    pub producers: Vec<Producer<f64>>,
+    pub producers: Vec<ringbuf::Producer<f64>>,
 }
 
 pub struct DebuggerOutput {
-    pub consumers: Vec<ConsumerDump<f64>>,
+    pub consumers: Vec<ConsumerRingBuf<f64>>,
 }
 
 extern "C" fn show(debugger: &mut DebuggerInput, i: i64, v: f64) -> bool {
@@ -103,17 +102,17 @@ pub fn append_egui(
     jit_builder: &mut JITBuilder,
 ) {
     let jb = jit_builder;
-    decl!(prog, jb, "Ui.label",label,(E::Struct(Box::new("Ui".to_string())),E::Address),());
-    decl!(prog, jb, "Ui.button",button,(E::Struct(Box::new("Ui".to_string())),E::Address),(E::Bool));
-    decl!(prog, jb, "Ui.slider",slider,(E::Struct(Box::new("Ui".to_string())),E::Address,E::F64,E::F64,E::F64),(E::F64));
-    decl!(prog, jb, "Ui.slider_normalized",slider_normalized,(E::Struct(Box::new("Ui".to_string())),E::Address,E::F64,E::F64,E::F64,E::F64),(E::F64));
+    decl!(prog, jb, "Ui.label",label,(struct_t("Ui"),address_t()),());
+    decl!(prog, jb, "Ui.button",button,(struct_t("Ui"),address_t()),(bool_t()));
+    decl!(prog, jb, "Ui.slider",slider,(struct_t("Ui"),address_t(),f64_t(),f64_t(),f64_t()),(f64_t()));
+    decl!(prog, jb, "Ui.slider_normalized",slider_normalized,(struct_t("Ui"),address_t(),f64_t(),f64_t(),f64_t(),f64_t()),(f64_t()));
     
-    decl!(prog, jb, "f64.from_range",      from_range,       (E::F64,E::F64,E::F64),        (E::F64));
-    decl!(prog, jb, "f64.to_range",        to_range,         (E::F64,E::F64,E::F64),        (E::F64));
-    decl!(prog, jb, "f64.from_normalized", from_normalized,  (E::F64,E::F64,E::F64,E::F64), (E::F64));
-    decl!(prog, jb, "f64.to_normalized",   to_normalized,    (E::F64,E::F64,E::F64,E::F64), (E::F64));
-    decl!(prog, jb, "f64.db_to_lin",       db_to_lin,        (E::F64),                      (E::F64));
-    decl!(prog, jb, "f64.lin_to_db",       lin_to_db,        (E::F64),                      (E::F64));
+    decl!(prog, jb, "f64.from_range",      from_range,       (f64_t(),f64_t(),f64_t()),        (f64_t()));
+    decl!(prog, jb, "f64.to_range",        to_range,         (f64_t(),f64_t(),f64_t()),        (f64_t()));
+    decl!(prog, jb, "f64.from_normalized", from_normalized,  (f64_t(),f64_t(),f64_t(),f64_t()), (f64_t()));
+    decl!(prog, jb, "f64.to_normalized",   to_normalized,    (f64_t(),f64_t(),f64_t(),f64_t()), (f64_t()));
+    decl!(prog, jb, "f64.db_to_lin",       db_to_lin,        (f64_t()),                      (f64_t()));
+    decl!(prog, jb, "f64.lin_to_db",       lin_to_db,        (f64_t()),                      (f64_t()));
 
-    decl!(prog, jb, "Debugger.show",show,(E::Struct(Box::new("Debugger".to_string())),E::I64,E::F64),(E::Bool));
+    decl!(prog, jb, "Debugger.show",show,(struct_t("Debugger"),i64_t(),f64_t()),(bool_t()));
 }

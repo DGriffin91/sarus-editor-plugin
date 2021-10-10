@@ -10,9 +10,9 @@ crate-type = ["cdylib", "lib"]
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-baseplug = { git = "https://github.com/DGriffin91/baseplug.git", branch = "shared"}
-baseview = { git = "https://github.com/RustAudio/baseview.git", rev = "d399c1275522ae75f5a82caadd904df2685c8660" }
-egui-baseview = { git = "https://github.com/DGriffin91/egui-baseview.git", branch = "latest-egui"}
+baseplug = { git = "https://github.com/DGriffin91/baseplug.git", branch = "shared" }
+baseview = { git = "https://github.com/RustAudio/baseview.git", rev = "6172090be36e36d2dad15863688dc52b7434a082" }
+egui-baseview = { git = "https://github.com/DGriffin91/egui-baseview.git", branch = "latest-egui" }
 egui = { git = "https://github.com/emilk/egui.git", branch = "master" }
 serde = { version = "1.0", features = ["derive"] }
 raw-window-handle = "0.3"
@@ -25,7 +25,7 @@ simplelog = "0.8"
 rand = "0.8.4"
 ron = "0.6"
 ringbuf = "0.2.6"
-sarus = { git = "https://github.com/DGriffin91/sarus.git"}
+sarus = { git = "https://github.com/DGriffin91/sarus.git" }
 anyhow = "1.0.43"
 triple_buffer = "5.0.6"
 notify = "5.0.0-pre.13"

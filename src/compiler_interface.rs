@@ -9,16 +9,14 @@ use std::{
 };
 
 use baseview::{Size, WindowOpenOptions, WindowScalePolicy};
-use egui::{
-    mutex::Mutex,
-    plot::{Line, Plot, Value, Values},
-    Align, CtxRef, Direction, FontDefinitions, FontFamily, Layout, Ui,
-};
+use egui::{mutex::Mutex, Align, CtxRef, Direction, FontDefinitions, FontFamily, Layout, Ui};
 use egui_baseview::{EguiWindow, Queue, RenderSettings, Settings};
 use sarus::{default_std_jit_from_code_with_importer, jit::JIT};
 
 use crate::{
     code_editor::code_editor_ui,
+    correlation_match::display::DisplayBuffer,
+    graphs::graphs_ui,
     heap_data::Heap,
     highligher::MemoizedSyntaxHighlighter,
     sarus_egui_lib::{append_egui, DebuggerInput, DebuggerOutput},
@@ -27,8 +25,18 @@ use crate::{
 
 use triple_buffer::{Input, TripleBuffer};
 
+pub struct WaveformDisplay {
+    pub buffer: DisplayBuffer,
+    pub display_decay: f64,
+    pub memory_decay: f64,
+    pub enable_waveform: bool,
+    pub enable_smoothing: bool,
+    pub offset: usize,
+}
+
 pub struct CompilerEditorState {
     pub code: String,
+    pub line_numbers: String,
     pub errors: String,
     pub current_file: String,
     pub file_saved: bool,
@@ -37,6 +45,7 @@ pub struct CompilerEditorState {
     pub errors_buf_out: Arc<Mutex<triple_buffer::Output<String>>>,
     pub trigger_compile: Arc<AtomicBool>,
     pub debug_out: Arc<Mutex<DebuggerOutput>>,
+    pub waveforms: Vec<WaveformDisplay>,
 }
 
 pub fn setup_fonts(ctx: &CtxRef) {
@@ -63,7 +72,7 @@ pub fn init_compiler_editor_thread(
     trigger_compile: Arc<AtomicBool>,
     ui_payload_in: Input<Option<CompiledUIPayload>>,
     dsp_payload_in: Input<Option<CompiledDSPPayload>>,
-    mut debug_out: DebuggerOutput,
+    debug_out: DebuggerOutput,
 ) {
     let code_buffer = TripleBuffer::new(DEFAULT_CODE.to_owned());
     let (code_buf_in, code_buf_out) = code_buffer.split();
@@ -97,11 +106,24 @@ pub fn init_compiler_editor_thread(
                         render_settings: RenderSettings::default(),
                     };
 
+                    let mut waveforms = Vec::new();
+                    for _ in 0..4 {
+                        waveforms.push(WaveformDisplay {
+                            buffer: DisplayBuffer::new(1024, 768),
+                            display_decay: 0.6,
+                            memory_decay: 0.8,
+                            enable_waveform: true,
+                            enable_smoothing: false,
+                            offset: 0,
+                        });
+                    }
+
                     EguiWindow::open_blocking(
                         settings,
                         CompilerEditorState {
                             code: DEFAULT_CODE.to_owned(),
                             errors: String::new(),
+                            line_numbers: String::new(),
                             current_file: String::new(),
                             highlighter: MemoizedSyntaxHighlighter::default(),
                             code_buf_in: code_buf_in.clone(),
@@ -109,6 +131,7 @@ pub fn init_compiler_editor_thread(
                             trigger_compile: trigger_compile.clone(),
                             debug_out: debug_out.clone(),
                             file_saved: true,
+                            waveforms,
                         },
                         // Called once before the first frame. Allows you to do setup code and to
                         // call `ctx.set_fonts()`. Optional.
@@ -118,6 +141,7 @@ pub fn init_compiler_editor_thread(
                             setup_fonts(ctx);
                             let mut style: egui::Style = (*ctx.style()).clone();
                             style.spacing.interact_size = egui::vec2(40.0, 40.0);
+                            style.spacing.slider_width = 300.0;
                             ctx.set_style(style);
                         },
                         // Called before each frame. Here you should update the state of your
@@ -137,41 +161,7 @@ pub fn init_compiler_editor_thread(
                                             state.trigger_compile.store(true, Ordering::Relaxed);
                                         }
                                     });
-                                    egui::ScrollArea::vertical()
-                                        .enable_scrolling(true)
-                                        .id_source("log")
-                                        .show(ui, |ui| {
-                                            let mut debug_out = state.debug_out.lock();
-                                            for (i, cons) in
-                                                debug_out.consumers.iter_mut().enumerate()
-                                            {
-                                                cons.consume();
-                                                let current_val = if cons.data.len() > 0 {
-                                                    cons.data[0]
-                                                } else {
-                                                    0.0
-                                                };
-                                                ui.label(format!(
-                                                    "dbg.show({}, {:.6})",
-                                                    i, current_val
-                                                ));
-                                                let line = Line::new(Values::from_values_iter(
-                                                    cons.data
-                                                        .iter()
-                                                        .enumerate()
-                                                        .map(|(i, v)| Value::new(i as f64, *v)),
-                                                ));
-                                                ui.add(
-                                                    Plot::new(format!("debug{}", i))
-                                                        .line(line)
-                                                        .view_aspect(1.0)
-                                                        .allow_drag(false)
-                                                        .show_x(false)
-                                                        .show_axes([false, true]),
-                                                );
-                                                ui.separator();
-                                            }
-                                        });
+                                    graphs_ui(ui, state)
                                 });
                             egui::CentralPanel::default().show(ctx, |ui| {
                                 code_editor_ui(ui, state);
@@ -203,15 +193,20 @@ fn init_process_state(state: ProcessState) -> () {
     }
 }
 
-fn process(params: SarusModelParams, audio: AudioData, state: ProcessState, dbg: Debugger) -> () {
+fn process(params: SarusModelParams, audio: AudioData, 
+           state: ProcessState, dbg: Debugger) -> () {
     i = 0
     left = audio.left
     right = audio.right
     dbg.show(0, left[0])
     dbg.show(1, left[0]/right[0])
-    highshelf = Coefficients::highshelf(params.p1.to_normalized( 20.0, 20000.0, 2.0), 
-                                        params.p2.to_normalized(-24.0,    24.0, 1.0), 
-                                        params.p3.to_normalized(  0.1,    10.0, 1.0))
+
+    highshelf = Coefficients::highshelf(
+        params.p1.from_normalized( 20.0, 20000.0, 2.0), 
+        params.p2.from_normalized(-24.0,    24.0, 1.0), 
+        params.p3.from_normalized(  0.1,    10.0, 1.0)
+    )
+
     while i < audio.len {
         left[i] = state.filter_l.process(left[i], highshelf)
         right[i] = state.filter_r.process(right[i], highshelf)
@@ -275,7 +270,7 @@ struct Debugger {}
 struct SarusModelParams { p1: f64, p2: f64, p3: f64, p4: f64, p5: f64, p6: f64, p7: f64, p8: f64, }
 "#;
 
-fn compile(code: &str) -> anyhow::Result<JIT> {
+pub fn compile(code: &str) -> anyhow::Result<JIT> {
     let jit = default_std_jit_from_code_with_importer(&code, |ast, jit_builder| {
         append_egui(ast, jit_builder);
     })?;
@@ -370,4 +365,17 @@ fn get_state(jit: &mut JIT, size_name: &str, state_name: &str) -> anyhow::Result
     let init = unsafe { mem::transmute::<_, extern "C" fn(*mut u8)>(func_ptr) };
     init(data.get_ptr());
     Ok(data)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn editor_plugin_just_compile() -> anyhow::Result<()> {
+        let mut jit = compile(&DEFAULT_CODE)?;
+
+        let _func_ptr = jit.get_func("process")?;
+
+        Ok(())
+    }
 }

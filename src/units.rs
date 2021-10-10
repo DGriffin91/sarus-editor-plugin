@@ -1,41 +1,40 @@
 use ringbuf::Consumer;
 
-pub struct ConsumerDump<T> {
+pub struct ConsumerRingBuf<T> {
     pub data: Vec<T>,
     consumer: Consumer<T>,
-    max_size: usize,
+    idx: usize,
 }
 
-impl<T> ConsumerDump<T> {
-    pub fn new(consumer: Consumer<T>, max_size: usize) -> ConsumerDump<T> {
-        ConsumerDump {
-            data: Vec::new(),
+impl<T> ConsumerRingBuf<T>
+where
+    T: std::default::Default + std::clone::Clone,
+{
+    pub fn new(consumer: Consumer<T>, max_size: usize) -> ConsumerRingBuf<T> {
+        ConsumerRingBuf {
+            data: vec![T::default(); max_size],
             consumer,
-            max_size,
+            idx: 0,
         }
     }
 
     pub fn consume(&mut self) {
         for _ in 0..self.consumer.len() {
             if let Some(n) = self.consumer.pop() {
-                self.data.push(n);
+                self.data[self.idx] = n;
+                self.idx += 1;
+                if self.idx >= self.data.len() {
+                    self.idx = 0
+                }
             } else {
                 break;
             }
         }
-        self.trim_data()
     }
 
-    pub fn set_max_size(&mut self, max_size: usize) {
-        self.max_size = max_size;
-        self.trim_data();
-    }
-
-    pub fn trim_data(&mut self) {
-        //Trims from the start of the vec
-        let data_len = self.data.len();
-        if data_len > self.max_size {
-            self.data.drain(0..(data_len - self.max_size).max(0));
-        }
+    pub fn iter(&self) -> std::iter::Chain<std::slice::Iter<'_, T>, std::slice::Iter<'_, T>> {
+        self.data[self.idx..]
+            .iter()
+            .chain(self.data[0..self.idx].iter())
     }
 }

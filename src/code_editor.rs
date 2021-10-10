@@ -45,6 +45,7 @@ pub fn code_editor_ui(ui: &mut Ui, state: &mut CompilerEditorState) {
         );
     });
     let mut code = state.code.clone();
+    let mut line_numbers = state.line_numbers.clone();
     /*if ui.button("Open File").clicked() {
         //let path = FileDialog::new()
         //    .set_location("~/Desktop") //&dirs::document_dir().unwrap_or(Path::new("~/").to_path_buf())
@@ -89,27 +90,53 @@ pub fn code_editor_ui(ui: &mut Ui, state: &mut CompilerEditorState) {
         .id_source("code_editor")
         .show(ui, |ui| {
             ui.visuals_mut().extreme_bg_color = egui::Color32::from_rgb(39, 40, 34);
-            let mut layouter = |ui: &egui::Ui, string: &str, wrap_width: f32| {
+            let mut layouter = |ui: &egui::Ui, string: &str, _wrap_width: f32| {
                 let mut layout_job =
                     &mut state
                         .highlighter
                         .highlight(ui.visuals().dark_mode, string, "rs".into());
-                layout_job.wrap_width = wrap_width;
+                layout_job.wrap_width = f32::INFINITY;
                 ui.fonts().layout_job(layout_job.clone())
             };
-            ui.add(
-                egui::TextEdit::multiline(&mut code)
-                    .desired_width(f32::INFINITY)
-                    .lock_focus(true)
-                    .text_style(egui::TextStyle::Monospace)
-                    .layouter(&mut layouter), // for cursor height
-            );
+            ui.horizontal_top(|ui| {
+                ui.add(
+                    egui::TextEdit::multiline(&mut line_numbers)
+                        .desired_width(60.0)
+                        .lock_focus(true)
+                        .enabled(false)
+                        .text_style(egui::TextStyle::Monospace)
+                        .frame(false),
+                );
+                egui::ScrollArea::horizontal()
+                    .enable_scrolling(true)
+                    .always_show_scroll(true)
+                    .id_source("code_editor_hor")
+                    .show(ui, |ui| {
+                        ui.add(
+                            egui::TextEdit::multiline(&mut code)
+                                .desired_width(f32::INFINITY)
+                                .lock_focus(true)
+                                .text_style(egui::TextStyle::Monospace)
+                                .layouter(&mut layouter)
+                                .frame(false), // for cursor height
+                        );
+                    })
+            })
         });
 
     if state.code != code {
-        state.code_buf_in.lock().write(code.clone());
+        state
+            .code_buf_in
+            .lock()
+            .write(code.replace("\t", "    ").clone());
         state.code = code;
         state.file_saved = false;
+    }
+    if state.code.matches("\n").count() != state.line_numbers.matches("\n").count() {
+        state.line_numbers = (0..state.code.matches("\n").count())
+            .enumerate()
+            .map(|(i, _)| format!("{: >4}\n", i))
+            .collect::<String>();
     }
 }
 

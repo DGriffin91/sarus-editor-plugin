@@ -5,14 +5,14 @@
 use baseplug::{Model, Plugin, PluginContext, ProcessContext, UIFloatParam, WindowOpenResult};
 use baseview::{Size, WindowOpenOptions, WindowScalePolicy};
 use raw_window_handle::HasRawWindowHandle;
-use ringbuf::{Consumer, Producer, RingBuffer};
+use ringbuf::RingBuffer;
 use sarus_egui_lib::{DebuggerInput, DebuggerOutput};
 use serde::{Deserialize, Serialize};
 
 use egui::{style::Spacing, Align, CtxRef, Direction, Layout, Style};
 use egui_baseview::{EguiWindow, Queue, RenderSettings, Settings};
 use triple_buffer::{Output, TripleBuffer};
-use units::ConsumerDump;
+use units::ConsumerRingBuf;
 
 use std::{
     cell::RefCell,
@@ -26,6 +26,8 @@ use compiler_interface::{setup_fonts, AudioData, CompiledDSPPayload, CompiledUIP
 
 pub mod code_editor;
 pub mod compiler_interface;
+pub mod correlation_match;
+pub mod graphs;
 pub mod heap_data;
 pub mod logging;
 pub mod units;
@@ -142,7 +144,7 @@ impl PluginContext<SarusPlugin> for SarusPluginShared {
         for _ in 0..4 {
             let (prod, cons) = RingBuffer::<f64>::new(1024).split();
             producers.push(prod);
-            consumers.push(ConsumerDump::new(cons, 1024));
+            consumers.push(ConsumerRingBuf::new(cons, 1024));
         }
 
         compiler_interface::init_compiler_editor_thread(
@@ -298,13 +300,10 @@ impl baseplug::PluginUI for SarusPlugin {
             // call `ctx.set_fonts()`. Optional.
             |ctx: &CtxRef, _queue: &mut Queue, _editor_state: &mut PluginEditorState| {
                 setup_fonts(ctx);
-                ctx.set_style(Style {
-                    spacing: Spacing {
-                        slider_width: 300.0,
-                        ..Default::default()
-                    },
-                    ..Default::default()
-                });
+                let mut style: egui::Style = (*ctx.style()).clone();
+                style.spacing.interact_size = egui::vec2(40.0, 40.0);
+                style.spacing.slider_width = 300.0;
+                ctx.set_style(style);
             },
             // Called before each frame. Here you should update the state of your
             // application and build the UI.
@@ -455,4 +454,5 @@ impl SarusModelParams {
     }
 }
 
+#[cfg(not(test))]
 baseplug::vst2!(SarusPlugin, b"SaRu");

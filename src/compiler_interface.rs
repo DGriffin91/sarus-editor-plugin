@@ -263,8 +263,6 @@ fn Coefficients::highshelf(cutoff_hz, gain_db, q_value) -> (coeffs: Coefficients
 }
 
 struct AudioData { left: &[f64], right: &[f64], len: i64, }
-fn get_editor_state_size() -> (size: i64) { size = EditorState::size }
-fn get_process_state_size() -> (size: i64) { size = ProcessState::size }
 struct Ui { ui: &, }
 struct Debugger {}
 struct SarusModelParams { p1: f64, p2: f64, p3: f64, p4: f64, p5: f64, p6: f64, p7: f64, p8: f64, }
@@ -348,19 +346,19 @@ fn start_compile(code: String) -> anyhow::Result<(CompiledUIPayload, CompiledDSP
     };
     let ui_payload = CompiledUIPayload {
         editor_func,
-        editor_data: get_state(&mut jit, "get_editor_state_size", "init_editor_state")?,
+        editor_data: get_state(&mut jit, "EditorState::size", "init_editor_state")?,
     };
     let dsp_payload = CompiledDSPPayload {
         process_func,
-        process_data: get_state(&mut jit, "get_process_state_size", "init_process_state")?,
+        process_data: get_state(&mut jit, "ProcessState::size", "init_process_state")?,
     };
     Ok((ui_payload, dsp_payload))
 }
 
 fn get_state(jit: &mut JIT, size_name: &str, state_name: &str) -> anyhow::Result<Heap> {
-    let func_ptr = jit.get_func(size_name)?;
-    let get_size = unsafe { mem::transmute::<_, extern "C" fn() -> i64>(func_ptr) };
-    let data = Heap::new(get_size() as usize)?;
+    let (data_ptr, _size) = jit.get_data(size_name)?;
+    let size: &i64 = unsafe { mem::transmute(data_ptr) };
+    let data = Heap::new(*size as usize)?;
     let func_ptr = jit.get_func(state_name)?;
     let init = unsafe { mem::transmute::<_, extern "C" fn(*mut u8)>(func_ptr) };
     init(data.get_ptr());

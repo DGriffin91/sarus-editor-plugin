@@ -1,6 +1,5 @@
-
-struct ProcessState {  
-    filter_l: Filter, 
+struct ProcessState {
+    filter_l: Filter,
     filter_r: Filter,
 }
 
@@ -12,26 +11,33 @@ fn init_process_state(state: ProcessState) -> () {
         filter_r: filter_r,
     }
 }
- 
-fn process(params: SarusModelParams, audio: AudioData, state: ProcessState, dbg: Debugger) -> () {
+
+fn process(params: SarusModelParams, audio: AudioData, 
+           state: ProcessState, dbg: Debugger) -> () {
     i = 0
-    left = audio.left
-    right = audio.right
+    left = audio.in_left
+    right = audio.in_right
     dbg.show(0, left[0])
     dbg.show(1, left[0]/right[0])
-    highshelf = Coefficients::highshelf(params.p1.to_normalized( 20.0, 20000.0, 2.0), 
-                                        params.p2.to_normalized(-24.0,    24.0, 1.0), 
-                                        params.p3.to_normalized(  0.1,    10.0, 1.0))
+
+    highshelf = Coefficients::highshelf(
+        params.p1.from_normalized( 20.0, 20000.0, 2.0), 
+        params.p2.from_normalized(-24.0,    24.0, 1.0), 
+        params.p3.from_normalized(  0.1,    10.0, 1.0)
+    )
+
     while i < audio.len {
         left[i] = state.filter_l.process(left[i], highshelf)
         right[i] = state.filter_r.process(right[i], highshelf)
         dbg.show(2, left[i])
+        audio.out_left[i] = left[i]
+        audio.out_right[i] = right[i]
         i += 1
     }
 }
 
 struct EditorState {
-    misc: f64,
+    misc: f32,
 }
 
 fn init_editor_state(state: EditorState) -> () {
@@ -77,9 +83,7 @@ fn Coefficients::highshelf(cutoff_hz, gain_db, q_value) -> (coeffs: Coefficients
     coeffs = Coefficients { a1: a1, a2: a2, a3: a3, m0: m0, m1: m1, m2: m2, }
 }
 
-struct AudioData { left: &[f64], right: &[f64], len: i64, }
-fn get_editor_state_size() -> (size: i64) { size = EditorState::size() }
-fn get_process_state_size() -> (size: i64) { size = ProcessState::size() }
+struct AudioData { in_left: &[f32], in_right: &[f32], out_left: &[f32], out_right: &[f32], len: i64, }
 struct Ui { ui: &, }
 struct Debugger {}
-struct SarusModelParams { p1: f64, p2: f64, p3: f64, p4: f64, p5: f64, p6: f64, p7: f64, p8: f64, }
+struct SarusModelParams { p1: f32, p2: f32, p3: f32, p4: f32, p5: f32, p6: f32, p7: f32, p8: f32, }

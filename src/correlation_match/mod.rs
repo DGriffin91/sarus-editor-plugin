@@ -70,10 +70,10 @@ pub mod ring_buffer;
 pub struct CorrelationMatch {
     max_size: usize,
     cross_correlation: CrossCorrelation,
-    f_buffer: Vec<f64>,
-    g_buffer: Vec<f64>,
-    result_buffer: Vec<f64>,
-    minima: Vec<(f64, f64)>,
+    f_buffer: Vec<f32>,
+    g_buffer: Vec<f32>,
+    result_buffer: Vec<f32>,
+    minima: Vec<(f32, f32)>,
 }
 
 impl CorrelationMatch {
@@ -96,7 +96,7 @@ impl CorrelationMatch {
     /// to compute the fundamental frequency of the signal.
     ///
     /// No array should exceed the maximum size given on `new`.
-    pub fn compute(&mut self, a: &[f64], b: &[f64], w: &[f64]) -> (f64, Option<f64>) {
+    pub fn compute(&mut self, a: &[f32], b: &[f32], w: &[f32]) -> (f32, Option<f32>) {
         assert!(a.len() <= self.max_size);
         assert!(b.len() <= a.len());
         assert!(w.len() == b.len());
@@ -115,7 +115,7 @@ impl CorrelationMatch {
         self.minima.clear();
     }
 
-    fn compute_a_squared_term(&mut self, a: &[f64], w: &[f64]) {
+    fn compute_a_squared_term(&mut self, a: &[f32], w: &[f32]) {
         // Compute term w[x] * a[x+t]^2. f = a^2, g = w
         for (f, &a) in self.f_buffer.iter_mut().zip(a.iter()) {
             *f = a.powi(2);
@@ -133,7 +133,7 @@ impl CorrelationMatch {
         }
     }
 
-    fn compute_cross_term(&mut self, a: &[f64], b: &[f64], w: &[f64]) {
+    fn compute_cross_term(&mut self, a: &[f32], b: &[f32], w: &[f32]) {
         // Compute term -2(w[x] * b[x]) * a[x+t]. f = a, g = w[x] * b[x]
         for (f, &a) in self.f_buffer.iter_mut().zip(a.iter()) {
             *f = a;
@@ -151,15 +151,15 @@ impl CorrelationMatch {
         }
     }
 
-    fn compute_b_squared_term(&mut self, b: &[f64], w: &[f64]) {
+    fn compute_b_squared_term(&mut self, b: &[f32], w: &[f32]) {
         // Compute term w[x] * b[x]^2. This is constant in t.
-        let term: f64 = w.iter().zip(b.iter()).map(|(&w, &b)| w * b.powi(2)).sum();
+        let term: f32 = w.iter().zip(b.iter()).map(|(&w, &b)| w * b.powi(2)).sum();
         for result in self.result_buffer.iter_mut() {
             *result += term;
         }
     }
 
-    fn find_minimum_and_period(&mut self) -> (f64, Option<f64>) {
+    fn find_minimum_and_period(&mut self) -> (f32, Option<f32>) {
         let mut max_value = 1.;
         for value in &self.result_buffer {
             max_value = value.max(max_value);
@@ -168,13 +168,13 @@ impl CorrelationMatch {
         let mut min_value = self.result_buffer[0];
         let end = self.result_buffer.len() - 1;
         if self.result_buffer[end] < min_value {
-            min_position = end as f64;
+            min_position = end as f32;
             min_value = self.result_buffer[end];
         }
         for (index, [a, b, c]) in IterWindows::from(self.result_buffer.iter().copied()).enumerate()
         {
             if let Some((x, y)) = parabolic_interpolation_minimum(a, b, c) {
-                let position = index as f64 + x;
+                let position = index as f32 + x;
                 self.minima.push((position, y));
                 if y < min_value {
                     min_position = position;
@@ -192,7 +192,7 @@ impl CorrelationMatch {
         }
         let interval = if valid_intervals >= 2 {
             let total = self.minima.last().unwrap().0 - self.minima.first().unwrap().0;
-            Some(total / valid_intervals as f64)
+            Some(total / valid_intervals as f32)
         } else {
             None
         };

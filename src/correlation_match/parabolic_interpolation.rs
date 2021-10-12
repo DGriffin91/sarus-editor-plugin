@@ -22,7 +22,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
 
-const EPS: f64 = 1e-8;
+const EPS: f32 = 1e-8;
 
 /// Finds the approximate minimum point of a function given three fixed points,
 /// using a parabola.
@@ -33,7 +33,7 @@ const EPS: f64 = 1e-8;
 /// pair `(x, y)`, describing that point. May also return None, if there is no minimum point or it
 /// is not on the interval [0, 2].
 #[inline]
-pub fn parabolic_interpolation_minimum(a: f64, b: f64, c: f64) -> Option<(f64, f64)> {
+pub fn parabolic_interpolation_minimum(a: f32, b: f32, c: f32) -> Option<(f32, f32)> {
     // x^2 coefficient should be positive: parabola opens upwards
     let x2coefficient = 2. * (a - 2. * b + c);
     if x2coefficient > EPS {

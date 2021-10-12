@@ -30,11 +30,11 @@ use std::{
 /// The imaginary unit "i".
 pub const IMAG_UNIT: Complex = Complex { real: 0., imag: 1. };
 
-/// A complex f64ber.
+/// A complex f32ber.
 #[derive(Copy, Clone)]
 pub struct Complex {
-    pub real: f64,
-    pub imag: f64,
+    pub real: f32,
+    pub imag: f32,
 }
 
 impl Complex {
@@ -47,18 +47,18 @@ impl Complex {
     }
 
     /// Square of the absolute value.
-    pub fn abs2(self) -> f64 {
+    pub fn abs2(self) -> f32 {
         self.real * self.real + self.imag * self.imag
     }
 
     /// Absolute value.
-    pub fn abs(self) -> f64 {
+    pub fn abs(self) -> f32 {
         self.abs2().sqrt()
     }
 
     /// Euler's formula,
     /// `e^(ix) = cos x + i sin x`.
-    pub fn euler(x: f64) -> Self {
+    pub fn euler(x: f32) -> Self {
         Complex {
             real: x.cos(),
             imag: x.sin(),
@@ -66,9 +66,9 @@ impl Complex {
     }
 }
 
-/// Defines a conversion from a pair of real f64bers into a complex f64ber.
-impl From<(f64, f64)> for Complex {
-    fn from(pair: (f64, f64)) -> Complex {
+/// Defines a conversion from a pair of real f32bers into a complex f32ber.
+impl From<(f32, f32)> for Complex {
+    fn from(pair: (f32, f32)) -> Complex {
         Complex {
             real: pair.0,
             imag: pair.1,
@@ -76,7 +76,7 @@ impl From<(f64, f64)> for Complex {
     }
 }
 
-/// Displays a complex f64ber in text form, akin to "(a + bi)".
+/// Displays a complex f32ber in text form, akin to "(a + bi)".
 impl fmt::Debug for Complex {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         if self.imag >= 0. {
@@ -87,7 +87,7 @@ impl fmt::Debug for Complex {
     }
 }
 
-// Basic mathematical operators are defined for complex f64bers below.
+// Basic mathematical operators are defined for complex f32bers below.
 
 impl Add for Complex {
     type Output = Self;
@@ -119,9 +119,9 @@ impl Neg for Complex {
     }
 }
 
-impl Mul<f64> for Complex {
+impl Mul<f32> for Complex {
     type Output = Self;
-    fn mul(self, other: f64) -> Self::Output {
+    fn mul(self, other: f32) -> Self::Output {
         Complex {
             real: self.real * other,
             imag: self.imag * other,
@@ -129,9 +129,9 @@ impl Mul<f64> for Complex {
     }
 }
 
-impl Div<f64> for Complex {
+impl Div<f32> for Complex {
     type Output = Self;
-    fn div(self, other: f64) -> Self::Output {
+    fn div(self, other: f32) -> Self::Output {
         Complex {
             real: self.real / other,
             imag: self.imag / other,

@@ -109,7 +109,7 @@ impl Default for SarusPluginModel {
 }
 
 //extern "C"  {
-//    fn sarus_ui(ui: &mut Ui, data:&mut [f64; 4]);
+//    fn sarus_ui(ui: &mut Ui, data:&mut [f32; 4]);
 //}
 
 pub struct SarusPluginShared {
@@ -142,7 +142,7 @@ impl PluginContext<SarusPlugin> for SarusPluginShared {
         let mut producers = Vec::new();
         let mut consumers = Vec::new();
         for _ in 0..4 {
-            let (prod, cons) = RingBuffer::<f64>::new(1024).split();
+            let (prod, cons) = RingBuffer::<f32>::new(1024).split();
             producers.push(prod);
             consumers.push(ConsumerRingBuf::new(cons, 1024));
         }
@@ -165,10 +165,7 @@ impl PluginContext<SarusPlugin> for SarusPluginShared {
     }
 }
 
-pub struct SarusPlugin {
-    left: Vec<f64>,
-    right: Vec<f64>,
-}
+pub struct SarusPlugin {}
 
 impl Plugin for SarusPlugin {
     const NAME: &'static str = "Sarus Editor Plugin";
@@ -183,10 +180,7 @@ impl Plugin for SarusPlugin {
 
     #[inline]
     fn new(_sample_rate: f32, _model: &SarusPluginModel, _shared: &SarusPluginShared) -> Self {
-        Self {
-            left: vec![0.0f64; 8192],
-            right: vec![0.0f64; 8192],
-        }
+        Self {}
     }
 
     #[inline]
@@ -204,14 +198,12 @@ impl Plugin for SarusPlugin {
         let input = &ctx.inputs[0].buffers;
         let output = &mut ctx.outputs[0].buffers;
         if let Some(dsp_payload) = dsp_payload {
-            for i in 0..ctx.nframes {
-                self.left[i] = input[0][i] as f64;
-                self.right[i] = input[1][i] as f64;
-            }
             let mut sarus_params = SarusModelParams::from_dsp_model(model);
             let mut audio_data = AudioData {
-                left: self.left.as_ptr(),
-                right: self.right.as_ptr(),
+                in_left: input[0].as_ptr(),
+                in_right: input[1].as_ptr(),
+                out_left: output[0].as_mut_ptr(),
+                out_right: output[1].as_mut_ptr(),
                 len: ctx.nframes as i64,
             };
             (dsp_payload.process_func)(
@@ -221,8 +213,8 @@ impl Plugin for SarusPlugin {
                 &mut debug_in_borrow,
             );
             for i in 0..ctx.nframes {
-                output[0][i] = self.left[i] as f32 * model.gain_master[i];
-                output[1][i] = self.right[i] as f32 * model.gain_master[i];
+                output[0][i] = output[0][i] * model.gain_master[i];
+                output[1][i] = output[1][i] * model.gain_master[i];
             }
         } else {
             for i in 0..ctx.nframes {
@@ -404,53 +396,55 @@ impl EditorModelState {
     }
 }
 
+//TODO try to get sarus to be able to take the whole model directly
+//(this may be an issue without repr(C))
 #[repr(C)]
 pub struct SarusModelParams {
-    pub param1: f64,
-    pub param2: f64,
-    pub param3: f64,
-    pub param4: f64,
-    pub param5: f64,
-    pub param6: f64,
-    pub param7: f64,
-    pub param8: f64,
+    pub param1: f32,
+    pub param2: f32,
+    pub param3: f32,
+    pub param4: f32,
+    pub param5: f32,
+    pub param6: f32,
+    pub param7: f32,
+    pub param8: f32,
 }
 
 #[rustfmt::skip]
 impl SarusModelParams {
     fn from_ui_model(model: &SarusPluginModelUI<SarusPlugin>) -> Self {
         SarusModelParams {
-            param1: model.param1.normalized() as f64,
-            param2: model.param2.normalized() as f64,
-            param3: model.param3.normalized() as f64,
-            param4: model.param4.normalized() as f64,
-            param5: model.param5.normalized() as f64,
-            param6: model.param6.normalized() as f64,
-            param7: model.param7.normalized() as f64,
-            param8: model.param8.normalized() as f64,
+            param1: model.param1.normalized(),
+            param2: model.param2.normalized(),
+            param3: model.param3.normalized(),
+            param4: model.param4.normalized(),
+            param5: model.param5.normalized(),
+            param6: model.param6.normalized(),
+            param7: model.param7.normalized(),
+            param8: model.param8.normalized(),
         }
     }
     fn from_dsp_model(model: &SarusPluginModelProcess) -> Self {
         SarusModelParams {
-            param1: model.param1[0] as f64,
-            param2: model.param2[0] as f64,
-            param3: model.param3[0] as f64,
-            param4: model.param4[0] as f64,
-            param5: model.param5[0] as f64,
-            param6: model.param6[0] as f64,
-            param7: model.param7[0] as f64,
-            param8: model.param8[0] as f64,
+            param1: model.param1[0],
+            param2: model.param2[0],
+            param3: model.param3[0],
+            param4: model.param4[0],
+            param5: model.param5[0],
+            param6: model.param6[0],
+            param7: model.param7[0],
+            param8: model.param8[0],
         }
     }
     fn to_model(&self, model: &mut SarusPluginModelUI<SarusPlugin>) {
-        model.param1.set_from_normalized(self.param1 as f32);
-        model.param2.set_from_normalized(self.param2 as f32);
-        model.param3.set_from_normalized(self.param3 as f32);
-        model.param4.set_from_normalized(self.param4 as f32);
-        model.param5.set_from_normalized(self.param5 as f32);
-        model.param6.set_from_normalized(self.param6 as f32);
-        model.param7.set_from_normalized(self.param7 as f32);
-        model.param8.set_from_normalized(self.param8 as f32);
+        model.param1.set_from_normalized(self.param1);
+        model.param2.set_from_normalized(self.param2);
+        model.param3.set_from_normalized(self.param3);
+        model.param4.set_from_normalized(self.param4);
+        model.param5.set_from_normalized(self.param5);
+        model.param6.set_from_normalized(self.param6);
+        model.param7.set_from_normalized(self.param7);
+        model.param8.set_from_normalized(self.param8);
     }
 }
 

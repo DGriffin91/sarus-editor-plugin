@@ -27,8 +27,8 @@ use triple_buffer::{Input, TripleBuffer};
 
 pub struct WaveformDisplay {
     pub buffer: DisplayBuffer,
-    pub display_decay: f64,
-    pub memory_decay: f64,
+    pub display_decay: f32,
+    pub memory_decay: f32,
     pub enable_waveform: bool,
     pub enable_smoothing: bool,
     pub offset: usize,
@@ -178,95 +178,7 @@ pub fn init_compiler_editor_thread(
     });
 }
 
-const DEFAULT_CODE: &str = r#"
-struct ProcessState {
-    filter_l: Filter,
-    filter_r: Filter,
-}
-
-fn init_process_state(state: ProcessState) -> () {
-    filter_l = Filter { ic1eq: 0.0, ic2eq: 0.0, }
-    filter_r = Filter { ic1eq: 0.0, ic2eq: 0.0, }
-    state = ProcessState {
-        filter_l: filter_l,
-        filter_r: filter_r,
-    }
-}
-
-fn process(params: SarusModelParams, audio: AudioData, 
-           state: ProcessState, dbg: Debugger) -> () {
-    i = 0
-    left = audio.left
-    right = audio.right
-    dbg.show(0, left[0])
-    dbg.show(1, left[0]/right[0])
-
-    highshelf = Coefficients::highshelf(
-        params.p1.from_normalized( 20.0, 20000.0, 2.0), 
-        params.p2.from_normalized(-24.0,    24.0, 1.0), 
-        params.p3.from_normalized(  0.1,    10.0, 1.0)
-    )
-
-    while i < audio.len {
-        left[i] = state.filter_l.process(left[i], highshelf)
-        right[i] = state.filter_r.process(right[i], highshelf)
-        dbg.show(2, left[i])
-        i += 1
-    }
-}
-
-struct EditorState {
-    misc: f64,
-}
-
-fn init_editor_state(state: EditorState) -> () {
-    state = EditorState {
-        misc: 123.0,
-    }
-}
-
-fn editor(ui: Ui, params: SarusModelParams, state: EditorState) -> () {
-    ui.label("Highshelf")
-    params.p1 = ui.slider_normalized("cutoff_hz", params.p1, 20.0,  20000.0, 2.0)
-    params.p2 = ui.slider_normalized("gain_db",   params.p2,-24.0,     24.0, 1.0)
-    params.p3 = ui.slider_normalized("q_value",   params.p3,  0.1,     10.0, 1.0)
-}
-
-struct Filter {
-    ic1eq,
-    ic2eq,
-}
-
-fn process(self: Filter, audio, c: Coefficients) -> (audio_out) {
-    v3 = audio - self.ic2eq
-    v1 = c.a1 * self.ic1eq + c.a2 * v3
-    v2 = self.ic2eq + c.a2 * self.ic1eq + c.a3 * v3
-    self.ic1eq = 2.0 * v1 - self.ic1eq
-    self.ic2eq = 2.0 * v2 - self.ic2eq
-    audio_out = c.m0 * audio + c.m1 * v1 + c.m2 * v2
-}
-
-struct Coefficients { a1, a2, a3, m0, m1, m2, }
-
-fn Coefficients::highshelf(cutoff_hz, gain_db, q_value) -> (coeffs: Coefficients) {
-    cutoff_hz = cutoff_hz.min(96000.0 * 0.5)
-    a = (10.0).powf(gain_db / 40.0)
-    g = (PI * cutoff_hz / 96000.0).tan() * a.sqrt()
-    k = 1.0 / q_value
-    a1 = 1.0 / (1.0 + g * (g + k))
-    a2 = g * a1
-    a3 = g * a2
-    m0 = a * a
-    m1 = k * (1.0 - a) * a
-    m2 = 1.0 - a * a
-    coeffs = Coefficients { a1: a1, a2: a2, a3: a3, m0: m0, m1: m1, m2: m2, }
-}
-
-struct AudioData { left: &[f64], right: &[f64], len: i64, }
-struct Ui { ui: &, }
-struct Debugger {}
-struct SarusModelParams { p1: f64, p2: f64, p3: f64, p4: f64, p5: f64, p6: f64, p7: f64, p8: f64, }
-"#;
+const DEFAULT_CODE: &str = include_str!("../resources/example.sarus");
 
 pub fn compile(code: &str) -> anyhow::Result<JIT> {
     let jit = default_std_jit_from_code_with_importer(&code, |ast, jit_builder| {
@@ -277,8 +189,10 @@ pub fn compile(code: &str) -> anyhow::Result<JIT> {
 
 #[repr(C)]
 pub struct AudioData {
-    pub left: *const f64,
-    pub right: *const f64,
+    pub in_left: *const f32,
+    pub in_right: *const f32,
+    pub out_left: *const f32,
+    pub out_right: *const f32,
     pub len: i64,
 }
 

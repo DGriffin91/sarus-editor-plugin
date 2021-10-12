@@ -24,7 +24,7 @@ SOFTWARE.
 
 //! Wrapper for [`CorrelationMatch`], providing functionality for displaying a waveform.
 
-use std::f64::consts::PI;
+use std::f32::consts::PI;
 
 use super::iter_windows::{shift_left, shift_left_fill, shift_right, shift_right_fill};
 use crate::correlation_match::CorrelationMatch;
@@ -33,13 +33,13 @@ use crate::correlation_match::CorrelationMatch;
 pub struct DisplayBuffer {
     size: usize,
     correlation_matcher: CorrelationMatch,
-    buffer: Vec<f64>,
-    display: Vec<f64>,
-    memory: Vec<f64>,
-    weight: Vec<f64>,
+    buffer: Vec<f32>,
+    display: Vec<f32>,
+    memory: Vec<f32>,
+    weight: Vec<f32>,
     offset: usize,
-    residual: f64,
-    average_period: f64,
+    residual: f32,
+    average_period: f32,
 }
 
 impl DisplayBuffer {
@@ -54,7 +54,7 @@ impl DisplayBuffer {
         assert!(input_size >= display_size);
         let weight = (0..display_size)
             .map(|index| index as isize - (display_size / 2) as isize)
-            .map(|offset| offset as f64 / display_size as f64)
+            .map(|offset| offset as f32 / display_size as f32)
             .map(|x| 1. + (2. * PI * x).cos())
             .collect();
         DisplayBuffer {
@@ -97,7 +97,7 @@ impl DisplayBuffer {
     /// [`update_match`](Self::update_match) afterwards.
     ///
     /// The length of the slice is `input_size` given on construction.
-    pub fn get_buffer_mut(&mut self) -> &mut [f64] {
+    pub fn get_buffer_mut(&mut self) -> &mut [f32] {
         &mut self.buffer
     }
 
@@ -114,7 +114,7 @@ impl DisplayBuffer {
     /// Set to `1.0` to bypass smoothing.
     ///
     /// [`update_display`](Self::update_display) should be called separately to update the display buffer.
-    pub fn update_match(&mut self, stabilize: bool, memory_decay: f64, period_decay: f64) {
+    pub fn update_match(&mut self, stabilize: bool, memory_decay: f32, period_decay: f32) {
         if stabilize {
             let (offset, interval) =
                 self.correlation_matcher
@@ -139,7 +139,7 @@ impl DisplayBuffer {
     ///
     /// This method may be called more often than [`update_match`](Self::update_match), even when
     /// there is no new data, to animate smoothly.
-    pub fn update_display(&mut self, display_decay: f64) {
+    pub fn update_display(&mut self, display_decay: f32) {
         for (index, item) in self.display.iter_mut().enumerate() {
             *item = display_decay * self.buffer[index + self.offset] + (1. - display_decay) * *item;
         }
@@ -148,7 +148,7 @@ impl DisplayBuffer {
     /// Retrieve the contents of the display buffer.
     ///
     /// The length of the slice is `display_size` given on construction.
-    pub fn get_display(&self) -> &[f64] {
+    pub fn get_display(&self) -> &[f32] {
         &self.display
     }
 
@@ -156,7 +156,7 @@ impl DisplayBuffer {
     /// match in [`update_match`](Self::update_match).
     ///
     /// The length of the slice is `display_size` given on construction.
-    pub fn get_memory(&self) -> &[f64] {
+    pub fn get_memory(&self) -> &[f32] {
         &self.memory
     }
 
@@ -166,17 +166,17 @@ impl DisplayBuffer {
     /// ```none
     /// f = SAMPLE_RATE / period
     /// ```
-    pub fn get_period(&self) -> f64 {
+    pub fn get_period(&self) -> f32 {
         self.average_period
     }
 
     /// Get the current offset and residual.
     ///
-    /// The first item of the tuple is a whole f64ber, denoting the starting index of the latest
+    /// The first item of the tuple is a whole f32ber, denoting the starting index of the latest
     /// match in the input buffer. The second item denotes accumulated subsample precision, which
     /// is less than `1` by absolute value. A plot of the waveform should be offset by the negation
     /// of the residual.
-    pub fn get_offset(&self) -> (usize, f64) {
+    pub fn get_offset(&self) -> (usize, f32) {
         (self.offset, self.residual)
     }
 }

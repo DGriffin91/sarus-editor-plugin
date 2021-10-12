@@ -22,7 +22,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
 
-use std::f64::consts::PI;
+use std::f32::consts::PI;
 
 use super::complex::Complex;
 
@@ -42,9 +42,9 @@ impl Fft {
     pub fn new(size: usize) -> Self {
         assert!(size.count_ones() == 1);
         let half_size = size / 2;
-        let half_size_inverse = 1. / half_size as f64;
+        let half_size_inverse = 1. / half_size as f32;
         let twiddle_factors = (0..half_size)
-            .map(|i| Complex::euler(-(i as f64) * half_size_inverse * PI))
+            .map(|i| Complex::euler(-(i as f32) * half_size_inverse * PI))
             .collect();
         Fft {
             size,
@@ -67,7 +67,7 @@ impl Fft {
                     let l = array[pos + i];
                     let r = array[pos + half_width + i];
                     // This expression is taken from the precomputed array instead:
-                    // Complex::euler(-(i as f64) * PI / half_width as f64)
+                    // Complex::euler(-(i as f32) * PI / half_width as f32)
                     let r = r * self.twiddle_factors[i * twiddle_step];
                     array[pos + i] = l + r;
                     array[pos + half_width + i] = l - r;
@@ -90,7 +90,7 @@ impl Fft {
         // ...and finally, the result is multiplied with a normalization factor
         // so that the inverse transform actually restores the original array.
         for z in array.iter_mut() {
-            *z = *z / self.size as f64;
+            *z = *z / self.size as f32;
         }
     }
 }

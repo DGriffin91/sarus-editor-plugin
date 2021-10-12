@@ -5,7 +5,7 @@ use egui::{
 
 use crate::compiler_interface::CompilerEditorState;
 
-fn decay_time_to_factor(time: f64) -> f64 {
+fn decay_time_to_factor(time: f32) -> f32 {
     // arbitrary constant that gives a useful range
     1. - (-1. / 6. / time).exp()
 }
@@ -62,7 +62,7 @@ pub fn graphs_ui(ui: &mut Ui, state: &mut CompilerEditorState) {
                         let line = Line::new(Values::from_values_iter(
                             data.iter()
                                 .enumerate()
-                                .map(|(i, v)| Value::new(i as f64, *v)),
+                                .map(|(i, v)| Value::new(i as f32, *v)),
                         ));
                         ui.add(
                             Plot::new(format!("debug{}", i))
@@ -75,7 +75,7 @@ pub fn graphs_ui(ui: &mut Ui, state: &mut CompilerEditorState) {
                     } else {
                         let data = debug_out.consumers[i].iter();
                         let line = Line::new(Values::from_values_iter(
-                            data.enumerate().map(|(i, v)| Value::new(i as f64, *v)),
+                            data.enumerate().map(|(i, v)| Value::new(i as f32, *v)),
                         ));
                         ui.add(
                             Plot::new(format!("debug{}", i))

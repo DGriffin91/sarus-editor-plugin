@@ -56,7 +56,7 @@ impl CrossCorrelation {
     /// Compute cross correlation including partially overlapping positions.
     /// Length of `a` and `b` must not exceed the maximum size given in `new`.
     /// Returns an interator of the results. The length of the result is `a.len() + b.len() - 1`.
-    pub fn compute(&mut self, a: &[f64], b: &[f64]) -> impl Iterator<Item = f64> + '_ {
+    pub fn compute(&mut self, a: &[f32], b: &[f32]) -> impl Iterator<Item = f32> + '_ {
         self.compute_raw(a, b);
         // The beginning of the result is read from the end of the buffer, rest normally
         // from the beginning of the buffer.
@@ -71,14 +71,14 @@ impl CrossCorrelation {
     /// Compute cross correlation excluding partially overlapping positions.
     /// Length of `a` and `b` must not exceed the maximum size given in `new`.
     /// Returns an interator of the results. The length of the result is `a.len() - b.len() + 1`.
-    pub fn compute_truncated(&mut self, a: &[f64], b: &[f64]) -> impl Iterator<Item = f64> + '_ {
+    pub fn compute_truncated(&mut self, a: &[f32], b: &[f32]) -> impl Iterator<Item = f32> + '_ {
         assert!(a.len() >= b.len());
         self.compute_raw(a, b);
         self.buffer[..a.len() - b.len() + 1].iter().map(|z| z.real)
     }
 
     /// Performs the computation without extracting results from the `buffer`.
-    fn compute_raw(&mut self, a: &[f64], b: &[f64]) {
+    fn compute_raw(&mut self, a: &[f32], b: &[f32]) {
         assert!(a.len() <= self.base_size);
         assert!(b.len() <= self.base_size);
         // We use a trick to perform FFTs for two non-complex signals at once.

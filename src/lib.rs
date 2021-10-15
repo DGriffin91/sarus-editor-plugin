@@ -9,7 +9,7 @@ use ringbuf::RingBuffer;
 use sarus_egui_lib::{DebuggerInput, DebuggerOutput};
 use serde::{Deserialize, Serialize};
 
-use egui::{style::Spacing, Align, CtxRef, Direction, Layout, Style};
+use egui::{Align, CtxRef, Direction, Layout};
 use egui_baseview::{EguiWindow, Queue, RenderSettings, Settings};
 use triple_buffer::{Output, TripleBuffer};
 use units::ConsumerRingBuf;
@@ -165,7 +165,9 @@ impl PluginContext<SarusPlugin> for SarusPluginShared {
     }
 }
 
-pub struct SarusPlugin {}
+pub struct SarusPlugin {
+    sample_rate: f32,
+}
 
 impl Plugin for SarusPlugin {
     const NAME: &'static str = "Sarus Editor Plugin";
@@ -179,8 +181,8 @@ impl Plugin for SarusPlugin {
     type PluginContext = SarusPluginShared;
 
     #[inline]
-    fn new(_sample_rate: f32, _model: &SarusPluginModel, _shared: &SarusPluginShared) -> Self {
-        Self {}
+    fn new(sample_rate: f32, _model: &SarusPluginModel, _shared: &SarusPluginShared) -> Self {
+        Self { sample_rate }
     }
 
     #[inline]
@@ -198,13 +200,14 @@ impl Plugin for SarusPlugin {
         let input = &ctx.inputs[0].buffers;
         let output = &mut ctx.outputs[0].buffers;
         if let Some(dsp_payload) = dsp_payload {
-            let mut sarus_params = SarusModelParams::from_dsp_model(model);
+            let mut sarus_params = SarusDSPModelParams::from_dsp_model(model);
             let mut audio_data = AudioData {
                 in_left: input[0].as_ptr(),
                 in_right: input[1].as_ptr(),
                 out_left: output[0].as_mut_ptr(),
                 out_right: output[1].as_mut_ptr(),
                 len: ctx.nframes as i64,
+                sample_rate: self.sample_rate,
             };
             (dsp_payload.process_func)(
                 &mut sarus_params,
@@ -326,7 +329,7 @@ impl baseplug::PluginUI for SarusPlugin {
                         if let Some(compiled_payload) =
                             editor_state.ui_payload_out.lock().unwrap().read()
                         {
-                            let mut sarus_params = SarusModelParams::from_ui_model(&state.model);
+                            let mut sarus_params = SarusUIModelParams::from_ui_model(&state.model);
                             (compiled_payload.editor_func)(
                                 ui,
                                 &mut sarus_params,
@@ -399,7 +402,7 @@ impl EditorModelState {
 //TODO try to get sarus to be able to take the whole model directly
 //(this may be an issue without repr(C))
 #[repr(C)]
-pub struct SarusModelParams {
+pub struct SarusUIModelParams {
     pub param1: f32,
     pub param2: f32,
     pub param3: f32,
@@ -410,10 +413,9 @@ pub struct SarusModelParams {
     pub param8: f32,
 }
 
-#[rustfmt::skip]
-impl SarusModelParams {
+impl SarusUIModelParams {
     fn from_ui_model(model: &SarusPluginModelUI<SarusPlugin>) -> Self {
-        SarusModelParams {
+        SarusUIModelParams {
             param1: model.param1.normalized(),
             param2: model.param2.normalized(),
             param3: model.param3.normalized(),
@@ -422,18 +424,6 @@ impl SarusModelParams {
             param6: model.param6.normalized(),
             param7: model.param7.normalized(),
             param8: model.param8.normalized(),
-        }
-    }
-    fn from_dsp_model(model: &SarusPluginModelProcess) -> Self {
-        SarusModelParams {
-            param1: model.param1[0],
-            param2: model.param2[0],
-            param3: model.param3[0],
-            param4: model.param4[0],
-            param5: model.param5[0],
-            param6: model.param6[0],
-            param7: model.param7[0],
-            param8: model.param8[0],
         }
     }
     fn to_model(&self, model: &mut SarusPluginModelUI<SarusPlugin>) {
@@ -445,6 +435,34 @@ impl SarusModelParams {
         model.param6.set_from_normalized(self.param6);
         model.param7.set_from_normalized(self.param7);
         model.param8.set_from_normalized(self.param8);
+    }
+}
+
+#[repr(C)]
+pub struct SarusDSPModelParams {
+    pub param1: *const f32,
+    pub param2: *const f32,
+    pub param3: *const f32,
+    pub param4: *const f32,
+    pub param5: *const f32,
+    pub param6: *const f32,
+    pub param7: *const f32,
+    pub param8: *const f32,
+}
+
+impl SarusDSPModelParams {
+    fn from_dsp_model(model: &SarusPluginModelProcess) -> Self {
+        //scary that no lifetime is needed
+        SarusDSPModelParams {
+            param1: model.param1.values.as_ptr(),
+            param2: model.param2.values.as_ptr(),
+            param3: model.param3.values.as_ptr(),
+            param4: model.param4.values.as_ptr(),
+            param5: model.param5.values.as_ptr(),
+            param6: model.param6.values.as_ptr(),
+            param7: model.param7.values.as_ptr(),
+            param8: model.param8.values.as_ptr(),
+        }
     }
 }
 

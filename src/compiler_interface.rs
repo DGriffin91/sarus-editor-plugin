@@ -20,7 +20,7 @@ use crate::{
     heap_data::Heap,
     highligher::MemoizedSyntaxHighlighter,
     sarus_egui_lib::{append_egui, DebuggerInput, DebuggerOutput},
-    SarusModelParams,
+    SarusDSPModelParams, SarusUIModelParams,
 };
 
 use triple_buffer::{Input, TripleBuffer};
@@ -194,18 +194,19 @@ pub struct AudioData {
     pub out_left: *const f32,
     pub out_right: *const f32,
     pub len: i64,
+    pub sample_rate: f32,
 }
 
 #[derive(Clone)]
 pub struct CompiledUIPayload {
-    pub editor_func: extern "C" fn(&mut Ui, &mut SarusModelParams, *mut u8),
+    pub editor_func: extern "C" fn(&mut Ui, &mut SarusUIModelParams, *mut u8),
     pub editor_data: Heap,
 }
 
 #[derive(Clone)]
 pub struct CompiledDSPPayload {
     pub process_func:
-        extern "C" fn(&mut SarusModelParams, &mut AudioData, *mut u8, &mut DebuggerInput),
+        extern "C" fn(&mut SarusDSPModelParams, &mut AudioData, *mut u8, &mut DebuggerInput),
     pub process_data: Heap,
 }
 
@@ -249,13 +250,13 @@ fn start_compile(code: String) -> anyhow::Result<(CompiledUIPayload, CompiledDSP
     let mut jit = compile(&code.replace("\r\n", "\n"))?;
     let func_ptr = jit.get_func("editor")?;
     let editor_func = unsafe {
-        mem::transmute::<_, extern "C" fn(&mut Ui, &mut SarusModelParams, *mut u8)>(func_ptr)
+        mem::transmute::<_, extern "C" fn(&mut Ui, &mut SarusUIModelParams, *mut u8)>(func_ptr)
     };
     let func_ptr = jit.get_func("process")?;
     let process_func = unsafe {
         mem::transmute::<
             _,
-            extern "C" fn(&mut SarusModelParams, &mut AudioData, *mut u8, &mut DebuggerInput),
+            extern "C" fn(&mut SarusDSPModelParams, &mut AudioData, *mut u8, &mut DebuggerInput),
         >(func_ptr)
     };
     let ui_payload = CompiledUIPayload {

@@ -69,6 +69,7 @@ pub fn graphs_ui(ui: &mut Ui, state: &mut CompilerEditorState) {
                                 .line(line)
                                 .view_aspect(1.0)
                                 .allow_drag(false)
+                                .allow_zoom(false)
                                 .show_x(false)
                                 .show_axes([false, true]),
                         );
@@ -82,6 +83,7 @@ pub fn graphs_ui(ui: &mut Ui, state: &mut CompilerEditorState) {
                                 .line(line)
                                 .view_aspect(1.0)
                                 .allow_drag(false)
+                                .allow_zoom(false)
                                 .show_x(false)
                                 .show_axes([false, true]),
                         );

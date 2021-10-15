@@ -12,7 +12,7 @@ fn init_process_state(state: ProcessState) -> () {
     }
 }
 
-fn process(params: SarusModelParams, audio: AudioData, 
+fn process(params: SarusDSPModelParams, audio: AudioData, 
            state: ProcessState, dbg: Debugger) -> () {
     i = 0
     left = audio.in_left
@@ -20,13 +20,13 @@ fn process(params: SarusModelParams, audio: AudioData,
     dbg.show(0, left[0])
     dbg.show(1, left[0]/right[0])
 
-    highshelf = Coefficients::highshelf(
-        params.p1.from_normalized( 20.0, 20000.0, 2.0), 
-        params.p2.from_normalized(-24.0,    24.0, 1.0), 
-        params.p3.from_normalized(  0.1,    10.0, 1.0)
-    )
-
     while i < audio.len {
+        highshelf = Coefficients::highshelf(
+            params.p1[i].from_normalized( 20.0, 20000.0, 2.0), 
+            params.p2[i].from_normalized(-24.0,    24.0, 1.0), 
+            params.p3[i].from_normalized(  0.1,    10.0, 1.0),
+            audio.sample_rate
+        )
         left[i] = state.filter_l.process(left[i], highshelf)
         right[i] = state.filter_r.process(right[i], highshelf)
         dbg.show(2, left[i])
@@ -46,11 +46,11 @@ fn init_editor_state(state: EditorState) -> () {
     }
 }
 
-fn editor(ui: Ui, params: SarusModelParams, state: EditorState) -> () {
+fn editor(ui: Ui, params: SarusUIModelParams, state: EditorState) -> () {
     ui.label("Highshelf")
-    params.p1 = ui.slider_normalized("cutoff_hz", params.p1, 20.0,  20000.0, 2.0)
-    params.p2 = ui.slider_normalized("gain_db",   params.p2,-24.0,     24.0, 1.0)
-    params.p3 = ui.slider_normalized("q_value",   params.p3,  0.1,     10.0, 1.0)
+    params.p1 = ui.slider_normalized("cutoff_hz", params.p1,  20.0, 20000.0, 2.0)
+    params.p2 = ui.slider_normalized("gain_db",   params.p2, -24.0,    24.0, 1.0)
+    params.p3 = ui.slider_normalized("q_value",   params.p3,   0.1,    10.0, 1.0)
 }
 
 struct Filter {
@@ -69,10 +69,10 @@ fn process(self: Filter, audio, c: Coefficients) -> (audio_out) {
 
 struct Coefficients { a1, a2, a3, m0, m1, m2, }
 
-fn Coefficients::highshelf(cutoff_hz, gain_db, q_value) -> (coeffs: Coefficients) {
-    cutoff_hz = cutoff_hz.min(96000.0 * 0.5)
+fn Coefficients::highshelf(cutoff_hz, gain_db, q_value, sample_rate) -> (coeffs: Coefficients) {
+    cutoff_hz = cutoff_hz.min(sample_rate * 0.5)
     a = (10.0).powf(gain_db / 40.0)
-    g = (PI * cutoff_hz / 96000.0).tan() * a.sqrt()
+    g = (PI * cutoff_hz / sample_rate).tan() * a.sqrt()
     k = 1.0 / q_value
     a1 = 1.0 / (1.0 + g * (g + k))
     a2 = g * a1
@@ -83,7 +83,8 @@ fn Coefficients::highshelf(cutoff_hz, gain_db, q_value) -> (coeffs: Coefficients
     coeffs = Coefficients { a1: a1, a2: a2, a3: a3, m0: m0, m1: m1, m2: m2, }
 }
 
-struct AudioData { in_left: &[f32], in_right: &[f32], out_left: &[f32], out_right: &[f32], len: i64, }
+struct AudioData { in_left: &[f32], in_right: &[f32], out_left: &[f32], out_right: &[f32], len: i64, sample_rate: f32, }
 struct Ui { ui: &, }
 struct Debugger {}
-struct SarusModelParams { p1: f32, p2: f32, p3: f32, p4: f32, p5: f32, p6: f32, p7: f32, p8: f32, }
+struct SarusUIModelParams { p1: f32, p2: f32, p3: f32, p4: f32, p5: f32, p6: f32, p7: f32, p8: f32, }
+struct SarusDSPModelParams { p1: &[f32], p2: &[f32], p3: &[f32], p4: &[f32], p5: &[f32], p6: &[f32], p7: &[f32], p8: &[f32], }

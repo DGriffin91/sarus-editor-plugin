@@ -58,7 +58,7 @@ struct Filter {
     ic2eq,
 }
 
-fn process(self: Filter, audio, c: Coefficients) -> (audio_out) {
+inline fn process(self: Filter, audio, c: Coefficients) -> (audio_out) {
     v3 = audio - self.ic2eq
     v1 = c.a1 * self.ic1eq + c.a2 * v3
     v2 = self.ic2eq + c.a2 * self.ic1eq + c.a3 * v3
@@ -69,7 +69,7 @@ fn process(self: Filter, audio, c: Coefficients) -> (audio_out) {
 
 struct Coefficients { a1, a2, a3, m0, m1, m2, }
 
-fn Coefficients::highshelf(cutoff_hz, gain_db, q_value, sample_rate) -> (coeffs: Coefficients) {
+inline fn Coefficients::highshelf(cutoff_hz, gain_db, q_value, sample_rate) -> (coeffs: Coefficients) {
     cutoff_hz = cutoff_hz.min(sample_rate * 0.5)
     a = (10.0).powf(gain_db / 40.0)
     g = (PI * cutoff_hz / sample_rate).tan() * a.sqrt()

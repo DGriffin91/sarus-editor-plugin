@@ -86,5 +86,7 @@ inline fn Coefficients::highshelf(cutoff_hz, gain_db, q_value, sample_rate) -> (
 struct AudioData { in_left: &[f32], in_right: &[f32], out_left: &[f32], out_right: &[f32], len: i64, sample_rate: f32, }
 struct Ui { ui: &, }
 struct Debugger {}
-struct SarusUIModelParams { p1: f32, p2: f32, p3: f32, p4: f32, p5: f32, p6: f32, p7: f32, p8: f32, }
-struct SarusDSPModelParams { p1: &[f32], p2: &[f32], p3: &[f32], p4: &[f32], p5: &[f32], p6: &[f32], p7: &[f32], p8: &[f32], }
+struct SarusUIModelParams { p1: f32, p2: f32, p3: f32, p4: f32, p5: f32, p6: f32, p7: f32, p8: f32, 
+                            p9: f32, p10: f32, p11: f32, p12: f32, p13: f32, p14: f32, p15: f32, p16: f32, }
+struct SarusDSPModelParams { p1: &[f32], p2: &[f32], p3: &[f32], p4: &[f32], p5: &[f32], p6: &[f32], p7: &[f32], p8: &[f32], 
+                             p9: &[f32], p10: &[f32], p11: &[f32], p12: &[f32], p13: &[f32], p14: &[f32], p15: &[f32], p16: &[f32],}

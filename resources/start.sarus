@@ -1,0 +1,48 @@
+struct ProcessState {
+    some_number: f32,
+}
+
+fn init_process_state(state: ProcessState) -> () {
+    state = ProcessState {
+        some_number: 0.0,
+    }
+}
+
+fn process(params: SarusDSPModelParams, audio: AudioData, 
+           state: ProcessState, dbg: Debugger) -> () {
+    i = 0
+    left = audio.in_left
+    right = audio.in_right
+
+    while i < audio.len {
+        gain = params.p1[i].db_to_lin()
+        audio.out_left[i] = left[i] * gain
+        audio.out_right[i] = right[i] * gain
+        dbg.show(0, audio.out_left[i])
+        dbg.show(1, gain)
+        i += 1
+    }
+}
+
+struct EditorState {
+    misc: f32,
+}
+
+fn init_editor_state(state: EditorState) -> () {
+    state = EditorState {
+        misc: 123.0,
+    }
+}
+
+fn editor(ui: Ui, params: SarusUIModelParams, state: EditorState) -> () {
+    ui.label("I'm a label!")
+    params.p1 = ui.slider_normalized("Gain",   params.p1, -24.0,    24.0, 1.0)
+}
+
+struct AudioData { in_left: &[f32], in_right: &[f32], out_left: &[f32], out_right: &[f32], len: i64, sample_rate: f32, }
+struct Ui { ui: &, }
+struct Debugger {}
+struct SarusUIModelParams { p1: f32, p2: f32, p3: f32, p4: f32, p5: f32, p6: f32, p7: f32, p8: f32, 
+                            p9: f32, p10: f32, p11: f32, p12: f32, p13: f32, p14: f32, p15: f32, p16: f32, }
+struct SarusDSPModelParams { p1: &[f32], p2: &[f32], p3: &[f32], p4: &[f32], p5: &[f32], p6: &[f32], p7: &[f32], p8: &[f32], 
+                             p9: &[f32], p10: &[f32], p11: &[f32], p12: &[f32], p13: &[f32], p14: &[f32], p15: &[f32], p16: &[f32],}

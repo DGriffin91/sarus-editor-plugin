@@ -99,11 +99,11 @@ pub fn code_editor_ui(ui: &mut Ui, state: &mut CompilerEditorState) {
                 ui.fonts().layout_job(layout_job.clone())
             };
             ui.horizontal_top(|ui| {
-                ui.add(
+                ui.add_enabled(
+                    false,
                     egui::TextEdit::multiline(&mut line_numbers)
                         .desired_width(60.0)
                         .lock_focus(true)
-                        .enabled(false)
                         .text_style(egui::TextStyle::Monospace)
                         .frame(false),
                 );
@@ -131,7 +131,13 @@ pub fn code_editor_ui(ui: &mut Ui, state: &mut CompilerEditorState) {
             .write(code.replace("\t", "    ").clone());
         state.code = code;
         state.file_saved = false;
+        setup_line_numbers(state)
+    } else if state.line_numbers.len() == 0 {
+        setup_line_numbers(state)
     }
+}
+
+fn setup_line_numbers(state: &mut CompilerEditorState) {
     if state.code.matches("\n").count() != state.line_numbers.matches("\n").count() {
         state.line_numbers = (0..state.code.matches("\n").count())
             .enumerate()

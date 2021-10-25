@@ -22,14 +22,18 @@ use std::{
     },
 };
 
-use compiler_interface::{setup_fonts, AudioData, CompiledDSPPayload, CompiledUIPayload};
+use compiler::{AudioData, CompiledDSPPayload, CompiledUIPayload};
+use compiler_interface::setup_fonts;
 
 pub mod code_editor;
+pub mod compiler;
 pub mod compiler_interface;
 pub mod correlation_match;
+mod float_id;
 pub mod graphs;
 pub mod heap_data;
 pub mod logging;
+mod preset_manager;
 pub mod units;
 
 use logging::init_logging;
@@ -82,10 +86,65 @@ baseplug::model! {
             gradient = "Linear")]
         pub param8: f32,
 
+        #[model(min = 0.0, max = 1.0)]
+        #[parameter(name = "Parameter 9", unit = "Generic",
+            gradient = "Linear")]
+        pub param9: f32,
+
+        #[model(min = 0.0, max = 1.0)]
+        #[parameter(name = "Parameter 10", unit = "Generic",
+            gradient = "Linear")]
+        pub param10: f32,
+
+        #[model(min = 0.0, max = 1.0)]
+        #[parameter(name = "Parameter 11", unit = "Generic",
+            gradient = "Linear")]
+        pub param11: f32,
+
+        #[model(min = 0.0, max = 1.0)]
+        #[parameter(name = "Parameter 12", unit = "Generic",
+            gradient = "Linear")]
+        pub param12: f32,
+
+        #[model(min = 0.0, max = 1.0)]
+        #[parameter(name = "Parameter 13", unit = "Generic",
+            gradient = "Linear")]
+        pub param13: f32,
+
+        #[model(min = 0.0, max = 1.0)]
+        #[parameter(name = "Parameter 14", unit = "Generic",
+            gradient = "Linear")]
+        pub param14: f32,
+
+        #[model(min = 0.0, max = 1.0)]
+        #[parameter(name = "Parameter 15", unit = "Generic",
+            gradient = "Linear")]
+        pub param15: f32,
+
+        #[model(min = 0.0, max = 1.0)]
+        #[parameter(name = "Parameter 16", unit = "Generic",
+            gradient = "Linear")]
+        pub param16: f32,
+
         #[model(min = -90.0, max = 6.0)]
         #[parameter(name = "Master Gain", unit = "Decibels",
             gradient = "Power(0.15)")]
         pub gain_master: f32,
+
+        #[model(min = 0.0, max = 1.0)]
+        #[parameter(name = "ID1", unit = "Generic", smoothing = false,
+            gradient = "Linear")]
+        pub id1: f32,
+
+        #[model(min = 0.0, max = 1.0)]
+        #[parameter(name = "ID2", unit = "Generic", smoothing = false,
+            gradient = "Linear")]
+        pub id2: f32,
+
+        #[model(min = 0.0, max = 1.0)]
+        #[parameter(name = "ID3", unit = "Generic", smoothing = false,
+            gradient = "Linear")]
+        pub id3: f32,
     }
 }
 
@@ -93,7 +152,7 @@ impl Default for SarusPluginModel {
     fn default() -> Self {
         Self {
             // "gain" is converted from dB to coefficient in the parameter handling code,
-            // so in the model here it's a coeff.
+            // so in the model here it's a coefficient.
             // -0dB == 1.0
             param1: 0.0,
             param2: 0.0,
@@ -103,7 +162,18 @@ impl Default for SarusPluginModel {
             param6: 0.0,
             param7: 0.0,
             param8: 0.0,
+            param9: 0.0,
+            param10: 0.0,
+            param11: 0.0,
+            param12: 0.0,
+            param13: 0.0,
+            param14: 0.0,
+            param15: 0.0,
+            param16: 0.0,
             gain_master: 1.0,
+            id1: 0.0,
+            id2: 0.0,
+            id3: 0.0,
         }
     }
 }
@@ -146,6 +216,9 @@ impl PluginContext<SarusPlugin> for SarusPluginShared {
             producers.push(prod);
             consumers.push(ConsumerRingBuf::new(cons, 1024));
         }
+
+        //TODO share float is as atomic f32s between process, editor, and compiler
+        //do Projects::load() here
 
         compiler_interface::init_compiler_editor_thread(
             code_editor_is_open.clone(),
@@ -215,6 +288,7 @@ impl Plugin for SarusPlugin {
                 dsp_payload.process_data.get_ptr(),
                 &mut debug_in_borrow,
             );
+
             for i in 0..ctx.nframes {
                 output[0][i] = output[0][i] * model.gain_master[i];
                 output[1][i] = output[1][i] * model.gain_master[i];
@@ -411,6 +485,14 @@ pub struct SarusUIModelParams {
     pub param6: f32,
     pub param7: f32,
     pub param8: f32,
+    pub param9: f32,
+    pub param10: f32,
+    pub param11: f32,
+    pub param12: f32,
+    pub param13: f32,
+    pub param14: f32,
+    pub param15: f32,
+    pub param16: f32,
 }
 
 impl SarusUIModelParams {
@@ -424,6 +506,14 @@ impl SarusUIModelParams {
             param6: model.param6.normalized(),
             param7: model.param7.normalized(),
             param8: model.param8.normalized(),
+            param9: model.param9.normalized(),
+            param10: model.param10.normalized(),
+            param11: model.param11.normalized(),
+            param12: model.param12.normalized(),
+            param13: model.param13.normalized(),
+            param14: model.param14.normalized(),
+            param15: model.param15.normalized(),
+            param16: model.param16.normalized(),
         }
     }
     fn to_model(&self, model: &mut SarusPluginModelUI<SarusPlugin>) {
@@ -435,6 +525,14 @@ impl SarusUIModelParams {
         model.param6.set_from_normalized(self.param6);
         model.param7.set_from_normalized(self.param7);
         model.param8.set_from_normalized(self.param8);
+        model.param9.set_from_normalized(self.param9);
+        model.param10.set_from_normalized(self.param10);
+        model.param11.set_from_normalized(self.param11);
+        model.param12.set_from_normalized(self.param12);
+        model.param13.set_from_normalized(self.param13);
+        model.param14.set_from_normalized(self.param14);
+        model.param15.set_from_normalized(self.param15);
+        model.param16.set_from_normalized(self.param16);
     }
 }
 
@@ -448,6 +546,14 @@ pub struct SarusDSPModelParams {
     pub param6: *const f32,
     pub param7: *const f32,
     pub param8: *const f32,
+    pub param9: *const f32,
+    pub param10: *const f32,
+    pub param11: *const f32,
+    pub param12: *const f32,
+    pub param13: *const f32,
+    pub param14: *const f32,
+    pub param15: *const f32,
+    pub param16: *const f32,
 }
 
 impl SarusDSPModelParams {
@@ -462,6 +568,14 @@ impl SarusDSPModelParams {
             param6: model.param6.values.as_ptr(),
             param7: model.param7.values.as_ptr(),
             param8: model.param8.values.as_ptr(),
+            param9: model.param9.values.as_ptr(),
+            param10: model.param10.values.as_ptr(),
+            param11: model.param11.values.as_ptr(),
+            param12: model.param12.values.as_ptr(),
+            param13: model.param13.values.as_ptr(),
+            param14: model.param14.values.as_ptr(),
+            param15: model.param15.values.as_ptr(),
+            param16: model.param16.values.as_ptr(),
         }
     }
 }

@@ -90,13 +90,18 @@ pub fn code_editor_ui(ui: &mut Ui, state: &mut CompilerEditorState) {
         .id_source("code_editor")
         .show(ui, |ui| {
             ui.visuals_mut().extreme_bg_color = egui::Color32::from_rgb(39, 40, 34);
+            let mut theme = crate::syntax_highlighting::CodeTheme::from_memory(ui.ctx());
+            ui.collapsing("Theme", |ui| {
+                ui.group(|ui| {
+                    theme.ui(ui);
+                    theme.store_in_memory(ui.ctx());
+                });
+            });
             let mut layouter = |ui: &egui::Ui, string: &str, _wrap_width: f32| {
                 let mut layout_job =
-                    &mut state
-                        .highlighter
-                        .highlight(ui.visuals().dark_mode, string, "rs".into());
+                    crate::syntax_highlighting::highlight(ui.ctx(), &theme, string, "rs".into());
                 layout_job.wrap_width = f32::INFINITY;
-                ui.fonts().layout_job(layout_job.clone())
+                ui.fonts().layout_job(layout_job)
             };
             ui.horizontal_top(|ui| {
                 ui.add_enabled(
@@ -115,8 +120,7 @@ pub fn code_editor_ui(ui: &mut Ui, state: &mut CompilerEditorState) {
                         ui.add(
                             egui::TextEdit::multiline(&mut code)
                                 .desired_width(f32::INFINITY)
-                                .lock_focus(true)
-                                .text_style(egui::TextStyle::Monospace)
+                                .code_editor()
                                 .layouter(&mut layouter)
                                 .frame(false), // for cursor height
                         );

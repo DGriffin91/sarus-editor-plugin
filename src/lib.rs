@@ -29,19 +29,19 @@ pub mod code_editor;
 pub mod compiler;
 pub mod compiler_interface;
 pub mod correlation_match;
-mod float_id;
+pub mod float_id;
 pub mod graphs;
 pub mod heap_data;
 pub mod logging;
-mod preset_manager;
+pub mod preset_manager;
 pub mod units;
 
 use logging::init_logging;
 
 use std::sync::Arc;
 
-pub mod highligher;
 pub mod sarus_egui_lib;
+pub mod syntax_highlighting;
 
 baseplug::model! {
     #[derive(Debug, Serialize, Deserialize)]

@@ -8,7 +8,7 @@ use std::{
 };
 
 use baseview::{Size, WindowOpenOptions, WindowScalePolicy};
-use egui::{mutex::Mutex, Align, CtxRef, Direction, FontDefinitions, FontFamily, Layout};
+use egui::{mutex::Mutex, Align, CtxRef, Direction, FontDefinitions, Layout};
 use egui_baseview::{EguiWindow, Queue, RenderSettings, Settings};
 
 use crate::{
@@ -16,7 +16,6 @@ use crate::{
     compiler::{init_compiler_thread, CompiledDSPPayload, CompiledUIPayload, DEFAULT_CODE},
     correlation_match::display::DisplayBuffer,
     graphs::graphs_ui,
-    highligher::MemoizedSyntaxHighlighter,
     sarus_egui_lib::DebuggerOutput,
 };
 
@@ -37,7 +36,6 @@ pub struct CompilerEditorState {
     pub errors: String,
     pub current_file: String,
     pub file_saved: bool,
-    pub highlighter: MemoizedSyntaxHighlighter,
     pub code_buf_in: Arc<Mutex<triple_buffer::Input<String>>>,
     pub errors_buf_out: Arc<Mutex<triple_buffer::Output<String>>>,
     pub trigger_compile: Arc<AtomicBool>,
@@ -47,16 +45,6 @@ pub struct CompilerEditorState {
 
 pub fn setup_fonts(ctx: &CtxRef) {
     let mut fonts = FontDefinitions::default();
-
-    fonts.font_data.insert(
-        "FiraCode".to_owned(),
-        std::borrow::Cow::Borrowed(include_bytes!("../resources/FiraCode-Regular.ttf")),
-    );
-
-    fonts
-        .fonts_for_family
-        .get_mut(&FontFamily::Monospace)
-        .unwrap()[0] = "FiraCode".to_owned();
 
     for (_text_style, (_family, size)) in fonts.family_and_size.iter_mut() {
         *size = 25.0;
@@ -138,7 +126,6 @@ fn init_code_editor_thread(
                             errors: String::new(),
                             line_numbers: String::new(),
                             current_file: String::new(),
-                            highlighter: MemoizedSyntaxHighlighter::default(),
                             code_buf_in: code_buf_in.clone(),
                             errors_buf_out: errors_buf_out.clone(),
                             trigger_compile: trigger_compile.clone(),

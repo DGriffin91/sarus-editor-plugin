@@ -1,11 +1,8 @@
 use crate::compiler::{DEFAULT_CODE, START_CODE};
 use crate::float_id::FloatId;
-use anyhow::bail;
 use directories::ProjectDirs;
-use std::any::Any;
 use std::fs::{self, File};
 use std::io::Write;
-use std::ops::RangeBounds;
 use std::path::PathBuf;
 use std::{collections::HashMap, path::Path};
 

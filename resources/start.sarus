@@ -15,7 +15,7 @@ fn process(params: SarusDSPModelParams, audio: AudioData,
     right = audio.in_right
 
     while i < audio.len {
-        gain = params.p1[i].db_to_lin()
+        gain = params.p1[i].from_normalized(-24.0, 24.0, 1.0).db_to_lin()
         audio.out_left[i] = left[i] * gain
         audio.out_right[i] = right[i] * gain
         dbg.show(0, audio.out_left[i])
@@ -36,7 +36,7 @@ fn init_editor_state(state: EditorState) -> () {
 
 fn editor(ui: Ui, params: SarusUIModelParams, state: EditorState) -> () {
     ui.label("I'm a label!")
-    params.p1 = ui.slider_normalized("Gain",   params.p1, -24.0,    24.0, 1.0)
+    params.p1 = ui.slider_normalized("Gain", params.p1, -24.0, 24.0, 1.0)
 }
 
 struct AudioData { in_left: &[f32], in_right: &[f32], out_left: &[f32], out_right: &[f32], len: i64, sample_rate: f32, }

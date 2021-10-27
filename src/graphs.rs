@@ -15,7 +15,7 @@ pub fn graphs_ui(ui: &mut Ui, state: &mut CompilerEditorState) {
         .enable_scrolling(true)
         .id_source("log")
         .show(ui, |ui| {
-            let mut debug_out = state.debug_out.lock();
+            let mut debug_out = state.debug_out.lock().unwrap();
             for i in 0..debug_out.consumers.len() {
                 debug_out.consumers[i].consume();
                 let waveform = &mut state.waveforms[i];

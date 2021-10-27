@@ -1,49 +1,107 @@
-use egui::{Key, Ui};
+use std::{path::Path, process::Command, sync::atomic::Ordering};
 
-use std::fs;
-use std::path::Path;
+use egui::{Key, Ui};
+use log::info;
 
 use crate::compiler_interface::CompilerEditorState;
 
 pub fn code_editor_ui(ui: &mut Ui, state: &mut CompilerEditorState) {
-    let mut errors = state.errors_buf_out.lock().read().clone();
-    let current_file = state.current_file.clone();
-    ui.horizontal(|ui| {
-        let temp_path = Path::new(&current_file);
-        if !temp_path.exists() {
-            ui.label("File not found");
-        } else if let Err(e) = is_sarus_file(temp_path) {
-            ui.label(e);
-        } else {
+    let mut errors = state.errors_buf_out.lock().unwrap().read().clone();
+    if state.new_file_name.is_none() {
+        ui.horizontal(|ui| {
+            if ui.button("Show file").clicked() {
+                if let Ok(projects) = state.shared_ctx.projects.lock() {
+                    open_file(&projects.project_paths.projects_dir);
+                }
+            }
             if ui.button("Reload File").clicked() {
-                match fs::read_to_string(temp_path) {
-                    Ok(contents) => {
-                        state.code = contents;
-                        state.file_saved = true;
+                if let Ok(ref mut projects) = state.shared_ctx.projects.lock() {
+                    if let Err(e) = projects.reload() {
+                        state.errors = format!("Load File Error {}", e.to_string())
                     }
-                    Err(e) => state.errors = format!("Load File Error {}", e.to_string()),
                 }
             } else if ui.button("Save File").clicked()
                 || (ui.input().key_down(Key::S) && ui.input().modifiers.ctrl)
             {
-                match fs::write(temp_path, state.code.clone()) {
-                    Ok(_) => {
-                        state.errors = format!("File Saved");
-                        state.file_saved = true;
+                if let Ok(ref mut projects) = state.shared_ctx.projects.lock() {
+                    let id = state.shared_ctx.project_float_id.get_u64();
+                    match projects.set_code_by_id(id, state.code.replace("\t", "    ").to_string())
+                    {
+                        Ok(_) => {
+                            state.errors = format!("Code Saved");
+                        }
+                        Err(e) => state.errors = format!("Error {}", e.to_string()),
                     }
-                    Err(e) => state.errors = format!("Load Save Error {}", e.to_string()),
+                    match projects.save_code_by_id(id) {
+                        Ok(_) => {
+                            state.errors = format!("File Saved");
+                            state.file_saved = true;
+                            if state.compile_on_save {
+                                state
+                                    .shared_ctx
+                                    .trigger_compile
+                                    .store(true, Ordering::Relaxed)
+                            }
+                        }
+                        Err(e) => state.errors = format!("Load Save Error {}", e.to_string()),
+                    }
                 }
+            } else if ui.button("New File").clicked() {
+                state.new_file_name = Some("".to_string());
+            }
+
+            if !state.file_saved {
+                ui.label("*");
+            }
+            ui.label("File Name");
+            ui.label(&state.file_name);
+            ui.label("\tFile ID");
+            ui.label(&state.shared_ctx.project_float_id.to_string());
+        });
+    }
+    ui.horizontal(|ui| {
+        if state.new_file_name.is_some() {
+            if ui.button("Cancel").clicked() {
+                state.new_file_name = None;
+            }
+            if ui.button("Create File").clicked() {
+                if let Ok(ref mut projects) = state.shared_ctx.projects.lock() {
+                    let file_name = state.new_file_name.as_ref().unwrap();
+                    match projects.new_project(file_name) {
+                        Ok(id) => {
+                            projects.reload().unwrap(); //TODO don't reload everything, and don't just unwrap
+                            state.shared_ctx.project_float_id.update_from_u64(id);
+                            info!("new project, file name: {:?} id: {}", file_name, id);
+                        }
+                        Err(e) => state.errors = format!("New File Error {}", e.to_string()),
+                    }
+                }
+                state.new_file_name = None;
             }
         }
-        if !state.file_saved {
-            ui.label("*");
+        if let Some(new_file_name) = &mut state.new_file_name {
+            ui.label("File Name");
+            ui.add(
+                egui::TextEdit::singleline(new_file_name)
+                    .desired_width(f32::INFINITY)
+                    .text_style(egui::TextStyle::Monospace),
+            );
         }
-        ui.add(
-            egui::TextEdit::singleline(&mut state.current_file)
-                .desired_width(f32::INFINITY)
-                .text_style(egui::TextStyle::Monospace),
-        );
     });
+    let new_project_float_id = state.shared_ctx.project_float_id.get_u64();
+    if state.last_project_float_id != new_project_float_id {
+        state.last_project_float_id = new_project_float_id;
+        if let Ok(ref mut projects) = state.shared_ctx.projects.lock() {
+            if let Some(code) = projects.get_code_from_id(new_project_float_id) {
+                state.code = code.to_string();
+                state.line_numbers = "".to_string();
+                state.file_name = projects
+                    .get_name_from_id(new_project_float_id)
+                    .unwrap()
+                    .to_string();
+            }
+        }
+    }
     let mut code = state.code.clone();
     let mut line_numbers = state.line_numbers.clone();
     /*if ui.button("Open File").clicked() {
@@ -129,10 +187,6 @@ pub fn code_editor_ui(ui: &mut Ui, state: &mut CompilerEditorState) {
         });
 
     if state.code != code {
-        state
-            .code_buf_in
-            .lock()
-            .write(code.replace("\t", "    ").clone());
         state.code = code;
         state.file_saved = false;
         setup_line_numbers(state)
@@ -150,15 +204,21 @@ fn setup_line_numbers(state: &mut CompilerEditorState) {
     }
 }
 
-fn is_sarus_file(path: &Path) -> Result<(), String> {
-    if let Some(ext) = path.extension() {
-        if let Some(ext) = ext.to_str() {
-            if ext == "sarus" {
-                return Ok(());
-            } else {
-                return Err(format!("incorrect file type {}", ext));
-            }
-        }
+fn open_file(path: &Path) {
+    if cfg!(target_os = "windows") {
+        Command::new("explorer")
+            .arg(path.to_str().unwrap())
+            .spawn()
+            .unwrap();
+    } else if cfg!(target_os = "macos") {
+        Command::new("open")
+            .arg(path.to_str().unwrap())
+            .spawn()
+            .unwrap();
+    } else if cfg!(target_os = "linux") {
+        Command::new("xdg-open")
+            .arg(path.to_str().unwrap())
+            .spawn()
+            .unwrap();
     }
-    return Err(format!("incorrect file type"));
 }

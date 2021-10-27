@@ -4,6 +4,9 @@
 
 use baseplug::{Model, Plugin, PluginContext, ProcessContext, UIFloatParam, WindowOpenResult};
 use baseview::{Size, WindowOpenOptions, WindowScalePolicy};
+use float_id::FloatId;
+use log::error;
+use preset_manager::Projects;
 use raw_window_handle::HasRawWindowHandle;
 use ringbuf::RingBuffer;
 use sarus_egui_lib::{DebuggerInput, DebuggerOutput};
@@ -25,6 +28,7 @@ use std::{
 use compiler::{AudioData, CompiledDSPPayload, CompiledUIPayload};
 use compiler_interface::setup_fonts;
 
+pub mod atomic_f32;
 pub mod code_editor;
 pub mod compiler;
 pub mod compiler_interface;
@@ -131,20 +135,16 @@ baseplug::model! {
             gradient = "Power(0.15)")]
         pub gain_master: f32,
 
-        #[model(min = 0.0, max = 1.0)]
+        #[model(min = 0.0, max = 9999999.0)]
         #[parameter(name = "ID1", unit = "Generic", smoothing = false,
             gradient = "Linear")]
         pub id1: f32,
 
-        #[model(min = 0.0, max = 1.0)]
+        #[model(min = 0.0, max = 9999999.0)]
         #[parameter(name = "ID2", unit = "Generic", smoothing = false,
             gradient = "Linear")]
         pub id2: f32,
 
-        #[model(min = 0.0, max = 1.0)]
-        #[parameter(name = "ID3", unit = "Generic", smoothing = false,
-            gradient = "Linear")]
-        pub id3: f32,
     }
 }
 
@@ -173,7 +173,6 @@ impl Default for SarusPluginModel {
             gain_master: 1.0,
             id1: 0.0,
             id2: 0.0,
-            id3: 0.0,
         }
     }
 }
@@ -182,12 +181,22 @@ impl Default for SarusPluginModel {
 //    fn sarus_ui(ui: &mut Ui, data:&mut [f32; 4]);
 //}
 
-pub struct SarusPluginShared {
+pub struct SarusSharedState {
     code_editor_is_open: Arc<AtomicBool>,
     trigger_compile: Arc<AtomicBool>,
     ui_payload_out: Arc<Mutex<Output<Option<CompiledUIPayload>>>>,
     dsp_payload_out: Arc<RefCell<Output<Option<CompiledDSPPayload>>>>,
     debug_in: Arc<RefCell<DebuggerInput>>,
+    project_float_id: FloatId,
+    audio_thread_float_id: FloatId,
+    projects: Arc<Mutex<Projects>>,
+}
+
+unsafe impl Send for SarusSharedState {}
+unsafe impl Sync for SarusSharedState {}
+
+pub struct SarusPluginShared {
+    shared_ctx: Arc<SarusSharedState>,
 }
 
 unsafe impl Send for SarusPluginShared {}
@@ -217,29 +226,36 @@ impl PluginContext<SarusPlugin> for SarusPluginShared {
             consumers.push(ConsumerRingBuf::new(cons, 1024));
         }
 
-        //TODO share float is as atomic f32s between process, editor, and compiler
-        //do Projects::load() here
+        let projects = Arc::new(Mutex::new(Projects::load().unwrap()));
+        let project_float_id = FloatId::from_f32s(0.0, 0.0);
+        let audio_thread_float_id = FloatId::from_f32s(0.0, 0.0);
 
-        compiler_interface::init_compiler_editor_thread(
-            code_editor_is_open.clone(),
-            trigger_compile.clone(),
-            ui_payload_in,
-            dsp_payload_in,
-            DebuggerOutput { consumers },
-        );
-
-        Self {
+        let shared_ctx = Arc::new(SarusSharedState {
             code_editor_is_open,
             trigger_compile,
             ui_payload_out,
             dsp_payload_out,
             debug_in: Arc::new(RefCell::new(DebuggerInput { producers })),
-        }
+            project_float_id,
+            audio_thread_float_id,
+            projects,
+        });
+
+        compiler_interface::init_compiler_editor_thread(
+            ui_payload_in,
+            dsp_payload_in,
+            DebuggerOutput { consumers },
+            shared_ctx.clone(),
+        );
+
+        Self { shared_ctx }
     }
 }
 
 pub struct SarusPlugin {
     sample_rate: f32,
+    last_id1: f32,
+    last_id2: f32,
 }
 
 impl Plugin for SarusPlugin {
@@ -254,8 +270,16 @@ impl Plugin for SarusPlugin {
     type PluginContext = SarusPluginShared;
 
     #[inline]
-    fn new(sample_rate: f32, _model: &SarusPluginModel, _shared: &SarusPluginShared) -> Self {
-        Self { sample_rate }
+    fn new(sample_rate: f32, model: &SarusPluginModel, shared_ctx: &SarusPluginShared) -> Self {
+        shared_ctx
+            .shared_ctx
+            .project_float_id
+            .update_from_f32(model.id1, model.id2);
+        Self {
+            sample_rate,
+            last_id1: model.id1,
+            last_id2: model.id2,
+        }
     }
 
     #[inline]
@@ -263,12 +287,26 @@ impl Plugin for SarusPlugin {
         &mut self,
         model: &SarusPluginModelProcess,
         ctx: &mut ProcessContext<Self>,
-        shared: &SarusPluginShared,
+        shared_ctx: &SarusPluginShared,
     ) {
-        let mut dsp_payload_borrow = shared.dsp_payload_out.borrow_mut();
+        let shared_ctx = &shared_ctx.shared_ctx;
+        let mut dsp_payload_borrow = shared_ctx.dsp_payload_out.borrow_mut();
         let dsp_payload = dsp_payload_borrow.read();
 
-        let mut debug_in_borrow = shared.debug_in.borrow_mut();
+        let mut debug_in_borrow = shared_ctx.debug_in.borrow_mut();
+
+        //TODO it seems like there is still smoothing
+        if model.id1[ctx.nframes - 1] == model.id1[0] {
+            let new_id1 = model.id1[ctx.nframes - 1];
+            let new_id2 = model.id2[ctx.nframes - 1];
+            if new_id1 != self.last_id1 || new_id2 != self.last_id2 {
+                self.last_id1 = new_id1;
+                self.last_id2 = new_id2;
+                shared_ctx
+                    .audio_thread_float_id
+                    .update_from_f32(new_id1, new_id2);
+            }
+        }
 
         let input = &ctx.inputs[0].buffers;
         let output = &mut ctx.outputs[0].buffers;
@@ -305,7 +343,6 @@ impl Plugin for SarusPlugin {
 pub fn param_slider(
     ui: &mut egui::Ui,
     label: &str,
-    value_text: &mut String,
     param: &mut UIFloatParam<SarusPluginModel, SarusPluginModelSmooth>,
 ) {
     ui.label(label);
@@ -319,20 +356,12 @@ pub fn param_slider(
         .add(
             egui::Slider::new(&mut normal, 0.0..=1.0)
                 .show_value(false)
-                .text(&value_text),
+                .text(format!("{:.1} {}", param.unit_value(), param.unit_label())),
         )
         .changed()
     {
         param.set_from_normalized(normal);
-        format_value(value_text, param);
     };
-}
-
-pub fn format_value(
-    value_text: &mut String,
-    param: &UIFloatParam<SarusPluginModel, SarusPluginModelSmooth>,
-) {
-    *value_text = format!("{:.1} {}", param.unit_value(), param.unit_label());
 }
 
 impl baseplug::PluginUI for SarusPlugin {
@@ -360,10 +389,8 @@ impl baseplug::PluginUI for SarusPlugin {
             parent,
             settings,
             PluginEditorState {
-                state: EditorModelState::new(model),
-                code_editor_is_open: shared_ctx.code_editor_is_open.clone(),
-                trigger_compile: shared_ctx.trigger_compile.clone(),
-                ui_payload_out: shared_ctx.ui_payload_out.clone(),
+                model_state: model,
+                shared_ctx: shared_ctx.shared_ctx.clone(),
             },
             // Called once before the first frame. Allows you to do setup code and to
             // call `ctx.set_fonts()`. Optional.
@@ -384,42 +411,110 @@ impl baseplug::PluginUI for SarusPlugin {
                         Layout::from_main_dir_and_cross_align(Direction::TopDown, Align::LEFT)
                             .with_cross_justify(true);
                     ui.with_layout(layout, |ui| {
+                        let current_id = editor_state.shared_ctx.project_float_id.get_u64();
+                        if let Ok(ref mut projects) = editor_state.shared_ctx.projects.try_lock() {
+                            if ui
+                                .checkbox(&mut projects.config.compile_on_load, "Compile on Load")
+                                .clicked()
+                            {
+                                if let Err(e) = projects.update_config() {
+                                    error!("Could not save config file! {}", e);
+                                }
+                            }
+
+                            if ui.button("Refresh").clicked() {
+                                if let Err(e) = projects.reload() {
+                                    error!("Could not reload {}", e);
+                                }
+                            }
+
+                            let name = projects.get_name_from_id(current_id).unwrap_or("");
+
+                            let mut selected_id = current_id;
+                            egui::ComboBox::from_label("Load Project")
+                                .selected_text(format!("{}", name))
+                                .show_ui(ui, |ui| {
+                                    for (id, (path, _code)) in &projects.files {
+                                        ui.selectable_value(&mut selected_id, *id, path);
+                                    }
+                                });
+                            if current_id != selected_id {
+                                ::log::info!("(vst editor) project id changed {}", selected_id);
+
+                                let (f1, f2) = FloatId::f32_from_u64(selected_id);
+                                editor_state.model_state.id1.set_from_unit_value(f1);
+                                editor_state.model_state.id2.set_from_unit_value(f2);
+                                editor_state
+                                    .shared_ctx
+                                    .project_float_id
+                                    .update_from_f32(f1, f2);
+                                //TODO let Sarus code define defaults
+                                editor_state.model_state.param1.set_from_unit_value(0.5);
+                                editor_state.model_state.param2.set_from_unit_value(0.5);
+                                editor_state.model_state.param3.set_from_unit_value(0.5);
+                                editor_state.model_state.param4.set_from_unit_value(0.5);
+                                editor_state.model_state.param5.set_from_unit_value(0.5);
+                                editor_state.model_state.param6.set_from_unit_value(0.5);
+                                editor_state.model_state.param7.set_from_unit_value(0.5);
+                                editor_state.model_state.param8.set_from_unit_value(0.5);
+                                editor_state.model_state.param9.set_from_unit_value(0.5);
+                                editor_state.model_state.param10.set_from_unit_value(0.5);
+                                editor_state.model_state.param11.set_from_unit_value(0.5);
+                                editor_state.model_state.param12.set_from_unit_value(0.5);
+                                editor_state.model_state.param13.set_from_unit_value(0.5);
+                                editor_state.model_state.param14.set_from_unit_value(0.5);
+                                editor_state.model_state.param15.set_from_unit_value(0.5);
+                                editor_state.model_state.param16.set_from_unit_value(0.5);
+                            }
+                        }
                         if ui.button("Open Editor").clicked() {
                             editor_state
+                                .shared_ctx
                                 .code_editor_is_open
                                 .store(true, Ordering::Relaxed);
                         }
 
                         if ui.button("Compile").clicked() {
-                            editor_state.trigger_compile.store(true, Ordering::Relaxed);
+                            editor_state
+                                .shared_ctx
+                                .trigger_compile
+                                .store(true, Ordering::Relaxed);
                         }
                         ui.separator();
 
-                        let state = &mut editor_state.state;
-
-                        // Sync text values if there was automation.
-
-                        format_value(&mut state.gain_master_value, &state.model.gain_master);
-                        if let Some(compiled_payload) =
-                            editor_state.ui_payload_out.lock().unwrap().read()
+                        if let Some(compiled_payload) = editor_state
+                            .shared_ctx
+                            .ui_payload_out
+                            .lock()
+                            .unwrap()
+                            .read()
                         {
-                            let mut sarus_params = SarusUIModelParams::from_ui_model(&state.model);
+                            let mut sarus_params =
+                                SarusUIModelParams::from_ui_model(&editor_state.model_state);
                             (compiled_payload.editor_func)(
                                 ui,
                                 &mut sarus_params,
                                 compiled_payload.editor_data.get_ptr(),
                             );
-                            sarus_params.to_model(&mut state.model);
+                            sarus_params.to_model(&mut editor_state.model_state);
                         }
                         ui.separator();
-                        param_slider(
-                            ui,
-                            "Gain Master",
-                            &mut state.gain_master_value,
-                            &mut state.model.gain_master,
-                        );
+                        param_slider(ui, "Gain Master", &mut editor_state.model_state.gain_master);
                     });
                 });
+
+                let (f1, f2) = editor_state.shared_ctx.project_float_id.get_f32();
+                if f1.trunc() == 0.0 {
+                    let f1 = editor_state.model_state.id1.unit_value();
+                    let f2 = editor_state.model_state.id2.unit_value();
+                    editor_state
+                        .shared_ctx
+                        .project_float_id
+                        .update_from_f32(f1, f2);
+                } else {
+                    editor_state.model_state.id1.set_from_unit_value(f1);
+                    editor_state.model_state.id2.set_from_unit_value(f2);
+                }
 
                 ctx.request_repaint();
             },
@@ -453,24 +548,8 @@ impl baseplug::PluginUI for SarusPlugin {
 }
 
 pub struct PluginEditorState {
-    state: EditorModelState,
-    code_editor_is_open: Arc<AtomicBool>,
-    trigger_compile: Arc<AtomicBool>,
-    ui_payload_out: Arc<Mutex<Output<Option<CompiledUIPayload>>>>,
-}
-
-pub struct EditorModelState {
-    pub model: SarusPluginModelUI<SarusPlugin>,
-    pub gain_master_value: String,
-}
-
-impl EditorModelState {
-    pub fn new(model: SarusPluginModelUI<SarusPlugin>) -> EditorModelState {
-        EditorModelState {
-            model,
-            gain_master_value: String::new(),
-        }
-    }
+    model_state: SarusPluginModelUI<SarusPlugin>,
+    shared_ctx: Arc<SarusSharedState>,
 }
 
 //TODO try to get sarus to be able to take the whole model directly

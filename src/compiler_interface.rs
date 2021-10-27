@@ -1,14 +1,11 @@
 use std::{
-    sync::{
-        atomic::{AtomicBool, Ordering},
-        Arc,
-    },
+    sync::{atomic::Ordering, Arc, Mutex},
     thread,
     time::Duration,
 };
 
 use baseview::{Size, WindowOpenOptions, WindowScalePolicy};
-use egui::{mutex::Mutex, Align, CtxRef, Direction, FontDefinitions, Layout};
+use egui::{Align, CtxRef, Direction, FontDefinitions, Layout};
 use egui_baseview::{EguiWindow, Queue, RenderSettings, Settings};
 
 use crate::{
@@ -17,6 +14,7 @@ use crate::{
     correlation_match::display::DisplayBuffer,
     graphs::graphs_ui,
     sarus_egui_lib::DebuggerOutput,
+    SarusSharedState,
 };
 
 use triple_buffer::{Input, Output, TripleBuffer};
@@ -34,13 +32,15 @@ pub struct CompilerEditorState {
     pub code: String,
     pub line_numbers: String,
     pub errors: String,
-    pub current_file: String,
     pub file_saved: bool,
-    pub code_buf_in: Arc<Mutex<triple_buffer::Input<String>>>,
     pub errors_buf_out: Arc<Mutex<triple_buffer::Output<String>>>,
-    pub trigger_compile: Arc<AtomicBool>,
+    pub shared_ctx: Arc<SarusSharedState>,
     pub debug_out: Arc<Mutex<DebuggerOutput>>,
     pub waveforms: Vec<WaveformDisplay>,
+    pub last_project_float_id: u64,
+    pub new_file_name: Option<String>,
+    pub compile_on_save: bool,
+    pub file_name: String,
 }
 
 pub fn setup_fonts(ctx: &CtxRef) {
@@ -53,50 +53,36 @@ pub fn setup_fonts(ctx: &CtxRef) {
 }
 
 pub fn init_compiler_editor_thread(
-    code_editor_is_open: Arc<AtomicBool>,
-    trigger_compile: Arc<AtomicBool>,
     ui_payload_in: Input<Option<CompiledUIPayload>>,
     dsp_payload_in: Input<Option<CompiledDSPPayload>>,
     debug_out: DebuggerOutput,
+    shared_ctx: Arc<SarusSharedState>,
 ) {
-    let code_buffer = TripleBuffer::new(DEFAULT_CODE.to_owned());
-    let (code_buf_in, code_buf_out) = code_buffer.split();
-
     let errors_buffer = TripleBuffer::new(String::new());
     let (errors_buf_in, errors_buf_out) = errors_buffer.split();
 
-    let code_buf_in = Arc::new(Mutex::new(code_buf_in));
     let errors_buf_out = Arc::new(Mutex::new(errors_buf_out));
 
     let debug_out = Arc::new(Mutex::new(debug_out));
 
     init_compiler_thread(
-        code_buf_out,
         errors_buf_in,
-        trigger_compile.clone(),
         ui_payload_in,
         dsp_payload_in,
+        shared_ctx.clone(),
     );
 
-    init_code_editor_thread(
-        code_editor_is_open,
-        code_buf_in,
-        errors_buf_out,
-        trigger_compile,
-        debug_out,
-    );
+    init_code_editor_thread(errors_buf_out, debug_out, shared_ctx);
 }
 
 fn init_code_editor_thread(
-    code_editor_is_open: Arc<AtomicBool>,
-    code_buf_in: Arc<Mutex<Input<String>>>,
     errors_buf_out: Arc<Mutex<Output<String>>>,
-    trigger_compile: Arc<AtomicBool>,
     debug_out: Arc<Mutex<DebuggerOutput>>,
+    shared_ctx: Arc<SarusSharedState>,
 ) {
     thread::spawn(move || {
         loop {
-            if code_editor_is_open.load(Ordering::Relaxed) {
+            if shared_ctx.code_editor_is_open.load(Ordering::Relaxed) {
                 {
                     let settings = Settings {
                         window: WindowOpenOptions {
@@ -125,13 +111,15 @@ fn init_code_editor_thread(
                             code: DEFAULT_CODE.to_owned(),
                             errors: String::new(),
                             line_numbers: String::new(),
-                            current_file: String::new(),
-                            code_buf_in: code_buf_in.clone(),
                             errors_buf_out: errors_buf_out.clone(),
-                            trigger_compile: trigger_compile.clone(),
+                            shared_ctx: shared_ctx.clone(),
                             debug_out: debug_out.clone(),
                             file_saved: true,
                             waveforms,
+                            last_project_float_id: 0,
+                            new_file_name: None,
+                            compile_on_save: true,
+                            file_name: "".to_string(),
                         },
                         // Called once before the first frame. Allows you to do setup code and to
                         // call `ctx.set_fonts()`. Optional.
@@ -155,10 +143,14 @@ fn init_code_editor_thread(
                                         Align::Center,
                                     )
                                     .with_cross_justify(true);
+                                    ui.checkbox(&mut state.compile_on_save, "Compile On Save");
                                     ui.with_layout(layout, |ui| {
                                         if ui.button("COMPILE").clicked() {
                                             state.errors = String::from("");
-                                            state.trigger_compile.store(true, Ordering::Relaxed);
+                                            state
+                                                .shared_ctx
+                                                .trigger_compile
+                                                .store(true, Ordering::Relaxed);
                                         }
                                     });
                                     graphs_ui(ui, state)
@@ -171,7 +163,9 @@ fn init_code_editor_thread(
                         },
                     );
                 }
-                code_editor_is_open.store(false, Ordering::Relaxed)
+                shared_ctx
+                    .code_editor_is_open
+                    .store(false, Ordering::Relaxed)
             }
             std::thread::sleep(Duration::from_millis(200));
         }

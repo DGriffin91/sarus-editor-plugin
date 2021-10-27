@@ -1,20 +1,18 @@
 use std::{
     mem,
-    sync::{
-        atomic::{AtomicBool, Ordering},
-        Arc,
-    },
+    sync::{atomic::Ordering, Arc},
     thread,
     time::Duration,
 };
 
 use egui::Ui;
+use log::info;
 use sarus::{default_std_jit_from_code_with_importer, jit::JIT};
 
 use crate::{
     heap_data::Heap,
     sarus_egui_lib::{append_egui, DebuggerInput},
-    SarusDSPModelParams, SarusUIModelParams,
+    SarusDSPModelParams, SarusSharedState, SarusUIModelParams,
 };
 
 use triple_buffer::Input;
@@ -53,33 +51,67 @@ pub struct CompiledDSPPayload {
 }
 
 pub fn init_compiler_thread(
-    mut code_buf_out: triple_buffer::Output<String>,
     mut errors_buf_in: triple_buffer::Input<String>,
-    trigger_compile: Arc<AtomicBool>,
     mut ui_payload_in: Input<Option<CompiledUIPayload>>,
     mut dsp_payload_in: Input<Option<CompiledDSPPayload>>,
+    shared_ctx: Arc<SarusSharedState>,
 ) {
     thread::spawn(move || {
         //let mut sarus_ui_func: Option<extern "C" fn(&mut Ui, &mut SarusModelParams, *mut u8)> = None;
         //let mut sarus_ui_data: Option<Heap> = None;
-        let mut code: String;
+        let mut last_project_float_id = shared_ctx.project_float_id.get_u64();
+        let mut last_audio_thread_float_id = shared_ctx.audio_thread_float_id.get_u64();
         loop {
-            if trigger_compile.load(Ordering::Relaxed) {
-                code = code_buf_out.read().to_string();
-                trigger_compile.store(false, Ordering::Relaxed);
-
-                match start_compile(code) {
-                    Ok((ui_payload, dsp_payload)) => {
-                        //sarus_ui_func = Some(func);
-                        //sarus_ui_data = Some(data);
-                        ::log::info!("Compile Successful");
-                        errors_buf_in.write(String::from("Compile Successful"));
-                        ui_payload_in.write(Some(ui_payload));
-                        dsp_payload_in.write(Some(dsp_payload));
+            let new_project_float_id = shared_ctx.project_float_id.get_u64();
+            let new_audio_thread_float_id = shared_ctx.audio_thread_float_id.get_u64();
+            if last_audio_thread_float_id != new_audio_thread_float_id {
+                if let Ok(projects) = shared_ctx.projects.try_lock() {
+                    if let Some(_path) = projects.get_name_from_id(new_audio_thread_float_id) {
+                        last_project_float_id = new_audio_thread_float_id;
+                        last_audio_thread_float_id = new_audio_thread_float_id;
+                        shared_ctx
+                            .project_float_id
+                            .update_from_u64(new_audio_thread_float_id);
+                        info!(
+                            "(compiler), new id from audio {}",
+                            new_audio_thread_float_id
+                        );
+                        if projects.config.compile_on_load {
+                            shared_ctx.trigger_compile.store(true, Ordering::Relaxed);
+                        }
                     }
-                    Err(e) => {
-                        ::log::error!("Compile error {}", e.to_string());
-                        errors_buf_in.write(e.to_string())
+                }
+            }
+            if last_project_float_id != new_project_float_id {
+                info!("{} != {}", last_project_float_id, new_project_float_id);
+                if let Ok(projects) = shared_ctx.projects.try_lock() {
+                    if let Some(_path) = projects.get_name_from_id(new_project_float_id) {
+                        last_project_float_id = new_project_float_id;
+                        info!("(compiler), new id {}", new_project_float_id);
+                        if projects.config.compile_on_load {
+                            shared_ctx.trigger_compile.store(true, Ordering::Relaxed);
+                        }
+                    }
+                }
+            }
+            if shared_ctx.trigger_compile.load(Ordering::Relaxed) {
+                if let Ok(projects) = shared_ctx.projects.try_lock() {
+                    //code_editor_buf_out.read().to_string();
+                    if let Some(code) = projects.get_code_from_id(last_project_float_id) {
+                        shared_ctx.trigger_compile.store(false, Ordering::Relaxed);
+
+                        match start_compile(code.to_string()) {
+                            Ok((ui_payload, dsp_payload)) => {
+                                ::log::info!("Compile Successful");
+                                errors_buf_in.write(String::from("Compile Successful"));
+                                ui_payload_in.write(Some(ui_payload));
+                                dsp_payload_in.write(Some(dsp_payload));
+                            }
+                            Err(e) => {
+                                ::log::error!("Compile error {}", e.to_string());
+                                errors_buf_in.write(e.to_string())
+                            }
+                        }
                     }
                 }
             }

@@ -1,5 +1,6 @@
 use std::{
     mem,
+    path::Path,
     sync::{atomic::Ordering, Arc},
     thread,
     time::Duration,
@@ -7,7 +8,7 @@ use std::{
 
 use egui::Ui;
 use log::info;
-use sarus::{default_std_jit_from_code_with_importer, jit::JIT};
+use sarus::{default_std_jit_from_code_with_importer, jit::JIT, parse_with_context};
 
 use crate::{
     heap_data::Heap,
@@ -20,10 +21,15 @@ use triple_buffer::Input;
 pub const DEFAULT_CODE: &str = include_str!("../resources/example.sarus");
 pub const START_CODE: &str = include_str!("../resources/start.sarus");
 
-pub fn compile(code: &str) -> anyhow::Result<JIT> {
-    let jit = default_std_jit_from_code_with_importer(&code, |ast, jit_builder| {
-        append_egui(ast, jit_builder);
-    })?;
+pub fn compile(code: &str, file: &Path) -> anyhow::Result<JIT> {
+    let (ast, file_index_table) = parse_with_context(&code, file)?;
+    let jit = default_std_jit_from_code_with_importer(
+        ast,
+        Some(file_index_table),
+        |ast, jit_builder| {
+            append_egui(ast, jit_builder);
+        },
+    )?;
     Ok(jit)
 }
 
@@ -97,10 +103,13 @@ pub fn init_compiler_thread(
             if shared_ctx.trigger_compile.load(Ordering::Relaxed) {
                 if let Ok(projects) = shared_ctx.projects.try_lock() {
                     //code_editor_buf_out.read().to_string();
-                    if let Some(code) = projects.get_code_from_id(last_project_float_id) {
+                    if let Some((path, code)) = projects.files.get(&last_project_float_id) {
                         shared_ctx.trigger_compile.store(false, Ordering::Relaxed);
 
-                        match start_compile(code.to_string()) {
+                        match start_compile(
+                            code.to_string(),
+                            &projects.project_paths.projects_dir.join(path),
+                        ) {
                             Ok((ui_payload, dsp_payload)) => {
                                 ::log::info!("Compile Successful");
                                 errors_buf_in.write(String::from("Compile Successful"));
@@ -120,8 +129,12 @@ pub fn init_compiler_thread(
     });
 }
 
-fn start_compile(code: String) -> anyhow::Result<(CompiledUIPayload, CompiledDSPPayload)> {
-    let mut jit = compile(&code.replace("\r\n", "\n"))?;
+fn start_compile(
+    code: String,
+    file: &Path,
+) -> anyhow::Result<(CompiledUIPayload, CompiledDSPPayload)> {
+    info!("Compiling {:?}", file);
+    let mut jit = compile(&code.replace("\r\n", "\n"), file)?;
     let func_ptr = jit.get_func("editor")?;
     let editor_func = unsafe {
         mem::transmute::<_, extern "C" fn(&mut Ui, &mut SarusUIModelParams, *mut u8)>(func_ptr)
@@ -159,10 +172,10 @@ mod tests {
     use super::*;
     #[test]
     fn editor_plugin_just_compile() -> anyhow::Result<()> {
-        let mut jit = compile(&DEFAULT_CODE)?;
+        let mut jit = compile(&DEFAULT_CODE, &Path::new("."))?;
         let _func_ptr = jit.get_func("process")?;
 
-        let mut jit = compile(&START_CODE)?;
+        let mut jit = compile(&START_CODE, &Path::new("."))?;
         let _func_ptr = jit.get_func("process")?;
         Ok(())
     }

@@ -197,9 +197,9 @@ pub fn code_editor_ui(ui: &mut Ui, state: &mut CompilerEditorState) {
 
 fn setup_line_numbers(state: &mut CompilerEditorState) {
     if state.code.matches("\n").count() != state.line_numbers.matches("\n").count() {
-        state.line_numbers = (1..state.code.matches("\n").count() + 1)
+        state.line_numbers = (0..state.code.matches("\n").count())
             .enumerate()
-            .map(|(i, _)| format!("{: >4}\n", i))
+            .map(|(i, _)| format!("{: >4}\n", i + 1))
             .collect::<String>();
     }
 }

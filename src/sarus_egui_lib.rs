@@ -1,6 +1,10 @@
 use std::ffi::CStr;
 
 use crate::units::ConsumerRingBuf;
+use egui::plot::Line;
+use egui::plot::Plot;
+use egui::plot::Value;
+use egui::plot::Values;
 use egui::Ui;
 use sarus::decl;
 use sarus::frontend::Arg;
@@ -11,6 +15,43 @@ use sarus::jit::JITBuilder;
 
 use sarus::validator::struct_t;
 use sarus::validator::{address_t, bool_t, f32_t, i64_t};
+
+#[repr(C)]
+pub struct SliceF32 {
+    pub arr: *const f32,
+    pub len: i64,
+}
+
+#[repr(C)]
+pub struct SliceI64 {
+    pub arr: *const i64,
+    pub len: i64,
+}
+
+#[repr(C)]
+pub struct SliceBool {
+    pub arr: *const bool,
+    pub len: i64,
+}
+
+extern "C" fn plot(ui: &mut Ui, buf: SliceF32) {
+    let buf_slice = unsafe { std::slice::from_raw_parts(buf.arr, buf.len as usize) };
+    let line = Line::new(Values::from_values_iter(
+        buf_slice
+            .iter()
+            .enumerate()
+            .map(|(i, v)| Value::new(i as f32, *v)),
+    ));
+    ui.add(
+        Plot::new("plot")
+            .line(line)
+            .view_aspect(1.0)
+            .allow_drag(false)
+            .allow_zoom(false)
+            .show_x(false)
+            .show_axes([false, true]),
+    );
+}
 
 extern "C" fn label(ui: &mut Ui, s: *const i8) {
     let s = unsafe { CStr::from_ptr(s).to_str().unwrap() };
@@ -102,17 +143,21 @@ pub fn append_egui(
     jit_builder: &mut JITBuilder,
 ) {
     let jb = jit_builder;
+    decl!(prog, jb, "Ui.plot",plot,(struct_t("Ui"), struct_t("Slice::f32")),());
     decl!(prog, jb, "Ui.label",label,(struct_t("Ui"),address_t()),());
     decl!(prog, jb, "Ui.button",button,(struct_t("Ui"),address_t()),(bool_t()));
     decl!(prog, jb, "Ui.slider",slider,(struct_t("Ui"),address_t(),f32_t(),f32_t(),f32_t()),(f32_t()));
     decl!(prog, jb, "Ui.slider_normalized",slider_normalized,(struct_t("Ui"),address_t(),f32_t(),f32_t(),f32_t(),f32_t()),(f32_t()));
     
-    decl!(prog, jb, "f32.from_range",      from_range,       (f32_t(),f32_t(),f32_t()),        (f32_t()));
-    decl!(prog, jb, "f32.to_range",        to_range,         (f32_t(),f32_t(),f32_t()),        (f32_t()));
+    decl!(prog, jb, "f32.from_range",      from_range,       (f32_t(),f32_t(),f32_t()),         (f32_t()));
+    decl!(prog, jb, "f32.to_range",        to_range,         (f32_t(),f32_t(),f32_t()),         (f32_t()));
     decl!(prog, jb, "f32.from_normalized", from_normalized,  (f32_t(),f32_t(),f32_t(),f32_t()), (f32_t()));
     decl!(prog, jb, "f32.to_normalized",   to_normalized,    (f32_t(),f32_t(),f32_t(),f32_t()), (f32_t()));
-    decl!(prog, jb, "f32.db_to_lin",       db_to_lin,        (f32_t()),                      (f32_t()));
-    decl!(prog, jb, "f32.lin_to_db",       lin_to_db,        (f32_t()),                      (f32_t()));
+    decl!(prog, jb, "f32.db_to_lin",       db_to_lin,        (f32_t()),                         (f32_t()));
+    decl!(prog, jb, "f32.lin_to_db",       lin_to_db,        (f32_t()),                         (f32_t()));
 
     decl!(prog, jb, "Debugger.show",show,(struct_t("Debugger"),i64_t(),f32_t()),(bool_t()));
+    prog.push(Declaration::StructMacro("Slice".to_string(), Box::new(f32_t())));
+    prog.push(Declaration::StructMacro("Slice".to_string(), Box::new(i64_t())));
+    prog.push(Declaration::StructMacro("Slice".to_string(), Box::new(bool_t())));
 }

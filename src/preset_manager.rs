@@ -35,7 +35,7 @@ pub struct ProjectPaths {
     pub config_file: PathBuf,
 }
 
-fn setup_dirs() -> anyhow::Result<ProjectPaths> {
+pub fn setup_dirs() -> anyhow::Result<ProjectPaths> {
     if let Some(proj_dirs) = ProjectDirs::from("org", "Sarus", "EditorPlugin") {
         let config_dir = proj_dirs.config_dir().to_path_buf();
         let projects_dir = config_dir.join("projects");

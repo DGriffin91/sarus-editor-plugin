@@ -8,7 +8,7 @@ use std::{
 
 use egui::Ui;
 use log::info;
-use sarus::{default_std_jit_from_code_with_importer, jit::JIT, parse_with_context};
+use sarus::{default_std_jit_from_code_with_importer, jit::JIT, parse, parse_with_context};
 
 use crate::{
     heap_data::Heap,
@@ -28,6 +28,16 @@ pub fn compile(code: &str, file: &Path) -> anyhow::Result<JIT> {
         Some(file_index_table),
         |ast, jit_builder| {
             append_egui(ast, jit_builder);
+            let code = r#"
+struct AudioData { in_left: &[f32], in_right: &[f32], out_left: &[f32], out_right: &[f32], len: i64, sample_rate: f32, }
+struct Ui { ui: &, }
+struct Debugger {}
+struct SarusUIModelParams { p1: f32, p2: f32, p3: f32, p4: f32, p5: f32, p6: f32, p7: f32, p8: f32, 
+                            p9: f32, p10: f32, p11: f32, p12: f32, p13: f32, p14: f32, p15: f32, p16: f32, }
+struct SarusDSPModelParams { p1: &[f32], p2: &[f32], p3: &[f32], p4: &[f32], p5: &[f32], p6: &[f32], p7: &[f32], p8: &[f32], 
+                             p9: &[f32], p10: &[f32], p11: &[f32], p12: &[f32], p13: &[f32], p14: &[f32], p15: &[f32], p16: &[f32],}
+"#;
+            ast.append(&mut parse(&code).unwrap());
         },
     )?;
     Ok(jit)

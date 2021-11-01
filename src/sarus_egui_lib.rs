@@ -44,12 +44,14 @@ extern "C" fn plot(ui: &mut Ui, buf: SliceF32) {
     ));
     ui.add(
         Plot::new("plot")
+            .width(200.0)
             .line(line)
             .view_aspect(1.0)
             .allow_drag(false)
             .allow_zoom(false)
             .show_x(false)
-            .show_axes([false, true]),
+            .show_y(false)
+            .show_axes([false, false]),
     );
 }
 

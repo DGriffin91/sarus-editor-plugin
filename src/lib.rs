@@ -633,8 +633,25 @@ pub struct SarusDSPModelParams {
     pub param14: *const f32,
     pub param15: *const f32,
     pub param16: *const f32,
+    pub param1_active: bool,
+    pub param2_active: bool,
+    pub param3_active: bool,
+    pub param4_active: bool,
+    pub param5_active: bool,
+    pub param6_active: bool,
+    pub param7_active: bool,
+    pub param8_active: bool,
+    pub param9_active: bool,
+    pub param10_active: bool,
+    pub param11_active: bool,
+    pub param12_active: bool,
+    pub param13_active: bool,
+    pub param14_active: bool,
+    pub param15_active: bool,
+    pub param16_active: bool,
 }
 
+#[rustfmt::skip]
 impl SarusDSPModelParams {
     fn from_dsp_model(model: &SarusPluginModelProcess) -> Self {
         //scary that no lifetime is needed
@@ -655,6 +672,23 @@ impl SarusDSPModelParams {
             param14: model.param14.values.as_ptr(),
             param15: model.param15.values.as_ptr(),
             param16: model.param16.values.as_ptr(),
+            //model.param1.status.is_active() is private
+            param1_active:  if let baseplug::SmoothStatus::Active = model.param1.status {true} else {false},
+            param2_active:  if let baseplug::SmoothStatus::Active = model.param2.status {true} else {false},
+            param3_active:  if let baseplug::SmoothStatus::Active = model.param3.status {true} else {false},
+            param4_active:  if let baseplug::SmoothStatus::Active = model.param4.status {true} else {false},
+            param5_active:  if let baseplug::SmoothStatus::Active = model.param5.status {true} else {false},
+            param6_active:  if let baseplug::SmoothStatus::Active = model.param6.status {true} else {false},
+            param7_active:  if let baseplug::SmoothStatus::Active = model.param7.status {true} else {false},
+            param8_active:  if let baseplug::SmoothStatus::Active = model.param8.status {true} else {false},
+            param9_active:  if let baseplug::SmoothStatus::Active = model.param9.status {true} else {false},
+            param10_active: if let baseplug::SmoothStatus::Active = model.param10.status {true} else {false},
+            param11_active: if let baseplug::SmoothStatus::Active = model.param11.status {true} else {false},
+            param12_active: if let baseplug::SmoothStatus::Active = model.param12.status {true} else {false},
+            param13_active: if let baseplug::SmoothStatus::Active = model.param13.status {true} else {false},
+            param14_active: if let baseplug::SmoothStatus::Active = model.param14.status {true} else {false},
+            param15_active: if let baseplug::SmoothStatus::Active = model.param15.status {true} else {false},
+            param16_active: if let baseplug::SmoothStatus::Active = model.param16.status {true} else {false},
         }
     }
 }

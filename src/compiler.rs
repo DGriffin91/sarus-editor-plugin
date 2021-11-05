@@ -33,9 +33,11 @@ struct AudioData { in_left: &[f32], in_right: &[f32], out_left: &[f32], out_righ
 struct Ui { ui: &, }
 struct Debugger {}
 struct SarusUIModelParams { p1: f32, p2: f32, p3: f32, p4: f32, p5: f32, p6: f32, p7: f32, p8: f32, 
-                            p9: f32, p10: f32, p11: f32, p12: f32, p13: f32, p14: f32, p15: f32, p16: f32, }
+                            p9: f32, p10: f32, p11: f32, p12: f32, p13: f32, p14: f32, p15: f32, p16: f32,}
 struct SarusDSPModelParams { p1: &[f32], p2: &[f32], p3: &[f32], p4: &[f32], p5: &[f32], p6: &[f32], p7: &[f32], p8: &[f32], 
-                             p9: &[f32], p10: &[f32], p11: &[f32], p12: &[f32], p13: &[f32], p14: &[f32], p15: &[f32], p16: &[f32],}
+                             p9: &[f32], p10: &[f32], p11: &[f32], p12: &[f32], p13: &[f32], p14: &[f32], p15: &[f32], p16: &[f32],
+                             p1_active: bool, p2_active: bool, p3_active: bool, p4_active: bool, p5_active: bool, p6_active: bool, p7_active: bool, p8_active: bool, 
+                             p9_active: bool, p10_active: bool, p11_active: bool, p12_active: bool, p13_active: bool, p14_active: bool, p15_active: bool, p16_active: bool,}
 "#;
             ast.append(&mut parse(&code).unwrap());
         },

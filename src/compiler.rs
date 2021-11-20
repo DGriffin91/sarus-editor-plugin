@@ -1,6 +1,6 @@
 use std::{
     mem,
-    path::Path,
+    path::{Path, PathBuf},
     sync::{atomic::Ordering, Arc},
     thread,
     time::Duration,
@@ -8,7 +8,9 @@ use std::{
 
 use egui::Ui;
 use log::info;
-use sarus::{default_std_jit_from_code_with_importer, jit::JIT, parse, parse_with_context};
+use sarus::{
+    default_std_jit_from_code_with_importer, jit::JIT, parse, parse_with_context, Declaration,
+};
 
 use crate::{
     heap_data::Heap,
@@ -21,8 +23,7 @@ use triple_buffer::Input;
 pub const DEFAULT_CODE: &str = include_str!("../resources/example.sarus");
 pub const START_CODE: &str = include_str!("../resources/start.sarus");
 
-pub fn compile(code: &str, file: &Path) -> anyhow::Result<JIT> {
-    let (ast, file_index_table) = parse_with_context(&code, file)?;
+pub fn compile(ast: Vec<Declaration>, file_index_table: Vec<PathBuf>) -> anyhow::Result<JIT> {
     let jit = default_std_jit_from_code_with_importer(
         ast,
         Some(file_index_table),
@@ -79,6 +80,8 @@ pub fn init_compiler_thread(
         //let mut sarus_ui_data: Option<Heap> = None;
         let mut last_project_float_id = shared_ctx.project_float_id.get_u64();
         let mut last_audio_thread_float_id = shared_ctx.audio_thread_float_id.get_u64();
+        let mut _editor_jit = None; //These are only kept around so the deep stack is not dropped
+        let mut _process_jit = None;
         loop {
             let new_project_float_id = shared_ctx.project_float_id.get_u64();
             let new_audio_thread_float_id = shared_ctx.audio_thread_float_id.get_u64();
@@ -122,11 +125,13 @@ pub fn init_compiler_thread(
                             code.to_string(),
                             &projects.project_paths.projects_dir.join(path),
                         ) {
-                            Ok((ui_payload, dsp_payload)) => {
+                            Ok((ui_payload, dsp_payload, new_editor_jit, new_process_jit)) => {
                                 ::log::info!("Compile Successful");
                                 errors_buf_in.write(String::from("Compile Successful"));
                                 ui_payload_in.write(Some(ui_payload));
                                 dsp_payload_in.write(Some(dsp_payload));
+                                _editor_jit = Some(new_editor_jit);
+                                _process_jit = Some(new_process_jit);
                             }
                             Err(e) => {
                                 ::log::error!("Compile error {}", e.to_string());
@@ -144,14 +149,18 @@ pub fn init_compiler_thread(
 fn start_compile(
     code: String,
     file: &Path,
-) -> anyhow::Result<(CompiledUIPayload, CompiledDSPPayload)> {
+) -> anyhow::Result<(CompiledUIPayload, CompiledDSPPayload, JIT, JIT)> {
     info!("Compiling {:?}", file);
-    let mut jit = compile(&code.replace("\r\n", "\n"), file)?;
-    let func_ptr = jit.get_func("editor")?;
+    //TODO don't compile things like process and editor twice
+    //separate jit's for editor and process are because the deep stack is not thread safe
+    let (ast, file_index_table) = parse_with_context(&code.replace("\r\n", "\n"), file)?;
+    let mut editor_jit = compile(ast.clone(), file_index_table.clone())?;
+    let func_ptr = editor_jit.get_func("editor")?;
     let editor_func = unsafe {
         mem::transmute::<_, extern "C" fn(&mut Ui, &mut SarusUIModelParams, *mut u8)>(func_ptr)
     };
-    let func_ptr = jit.get_func("process")?;
+    let mut process_jit = compile(ast, file_index_table)?;
+    let func_ptr = process_jit.get_func("process")?;
     let process_func = unsafe {
         mem::transmute::<
             _,
@@ -160,13 +169,13 @@ fn start_compile(
     };
     let ui_payload = CompiledUIPayload {
         editor_func,
-        editor_data: get_state(&mut jit, "EditorState::size", "init_editor_state")?,
+        editor_data: get_state(&mut editor_jit, "EditorState::size", "init_editor_state")?,
     };
     let dsp_payload = CompiledDSPPayload {
         process_func,
-        process_data: get_state(&mut jit, "ProcessState::size", "init_process_state")?,
+        process_data: get_state(&mut process_jit, "ProcessState::size", "init_process_state")?,
     };
-    Ok((ui_payload, dsp_payload))
+    Ok((ui_payload, dsp_payload, editor_jit, process_jit))
 }
 
 fn get_state(jit: &mut JIT, size_name: &str, state_name: &str) -> anyhow::Result<Heap> {
@@ -184,10 +193,12 @@ mod tests {
     use super::*;
     #[test]
     fn editor_plugin_just_compile() -> anyhow::Result<()> {
-        let mut jit = compile(&DEFAULT_CODE, &Path::new("."))?;
+        let (ast, file_index_table) = parse_with_context(&DEFAULT_CODE, &Path::new("."))?;
+        let mut jit = compile(ast, file_index_table)?;
         let _func_ptr = jit.get_func("process")?;
 
-        let mut jit = compile(&START_CODE, &Path::new("."))?;
+        let (ast, file_index_table) = parse_with_context(&START_CODE, &Path::new("."))?;
+        let mut jit = compile(ast, file_index_table)?;
         let _func_ptr = jit.get_func("process")?;
         Ok(())
     }
